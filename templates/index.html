@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}ダッシュボード{% endblock %}
+
+{% block content %}
+<div class="page-title"><i class="bi bi-speedometer2 me-2"></i>ダッシュボード</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="card stat-card p-3">
+      <div class="text-muted small">総商品数</div>
+      <div class="fs-2 fw-bold text-primary">{{ summary.total_products }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card stat-card alert-card p-3">
+      <div class="text-muted small">在庫アラート</div>
+      <div class="fs-2 fw-bold text-danger">{{ summary.alert_count }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card stat-card zero-card p-3">
+      <div class="text-muted small">在庫ゼロ</div>
+      <div class="fs-2 fw-bold text-warning">{{ summary.zero_stock }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card stat-card in-card p-3">
+      <div class="text-muted small">本日入庫</div>
+      <div class="fs-2 fw-bold text-success">{{ summary.today_in }}</div>
+    </div>
+  </div>
+</div>
+
+{% if alerts %}
+<div class="card mb-4">
+  <div class="card-header d-flex align-items-center gap-2">
+    <i class="bi bi-exclamation-triangle-fill text-warning"></i> 在庫アラート商品
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-light">
+        <tr><th>商品名</th><th>コード</th><th>在庫</th><th>アラート水準</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for p in alerts %}
+        <tr>
+          <td>{{ p.name }}</td>
+          <td><code>{{ p.code }}</code></td>
+          <td class="text-danger fw-bold">{{ p.stock }} {{ p.unit }}</td>
+          <td>{{ p.alert_level }} {{ p.unit }}</td>
+          <td>
+            <a href="{{ url_for('stock_in_view') }}?pid={{ p.id }}" class="btn btn-sm btn-outline-success">入庫</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-clock-history me-1"></i>最近の入出庫</span>
+    <a href="{{ url_for('history') }}" class="btn btn-sm btn-light">全件表示</a>
+  </div>
+  <div class="card-body p-0">
+    {% if recent_logs %}
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-light">
+        <tr><th>日時</th><th>商品名</th><th>区分</th><th>数量</th><th>変動後在庫</th></tr>
+      </thead>
+      <tbody>
+        {% for l in recent_logs %}
+        <tr>
+          <td class="text-muted small">{{ l.logged_at }}</td>
+          <td>{{ l.product_name }}</td>
+          <td>
+            {% if l.type == 'in' %}<span class="badge badge-in">入庫</span>
+            {% elif l.type == 'out' %}<span class="badge badge-out">出庫</span>
+            {% else %}<span class="badge badge-adjust">棚卸</span>{% endif %}
+          </td>
+          <td>{{ l.quantity }} {{ l.unit }}</td>
+          <td>{{ l.after_stock }} {{ l.unit }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted text-center py-4">まだ入出庫記録がありません</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

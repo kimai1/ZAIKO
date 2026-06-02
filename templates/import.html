@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}JSONインポート{% endblock %}
+
+{% block content %}
+<div class="page-title"><i class="bi bi-upload me-2"></i>JSONインポート</div>
+
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header">バックアップJSONから商品を取り込む</div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          対応形式：<code>zaiko_backup_*.json</code>（version 2）<br>
+          既存の商品コードと重複する商品はスキップされます。<br>
+          SKU未設定の商品には <code>IMP-XXXX</code> の連番コードが付与されます。
+        </p>
+        <form method="post" enctype="multipart/form-data">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">JSONファイル</label>
+            <input type="file" name="file" class="form-control" accept=".json" required>
+          </div>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-cloud-upload me-1"></i>インポート実行
+          </button>
+          <a href="{{ url_for('products') }}" class="btn btn-outline-secondary ms-2">キャンセル</a>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header"><i class="bi bi-info-circle me-1"></i>インポートについて</div>
+      <div class="card-body small text-muted">
+        <ul class="mb-0 ps-3">
+          <li>インポートされるのは<strong>商品マスタのみ</strong>です</li>
+          <li>在庫数は0でインポートされます（インポート後に棚卸調整で実数を設定してください）</li>
+          <li>商品写真はインポートされません</li>
+          <li>カテゴリは自動で登録されます</li>
+          <li>同じコードの商品は上書きされず、スキップされます</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

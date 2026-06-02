@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}今井屋 同期{% endblock %}
+
+{% block content %}
+<div class="page-title"><i class="bi bi-arrow-left-right me-2"></i>今井屋 → ZAIKO 同期</div>
+
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header">📂 バックアップJSONから自動同期</div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          今井屋アプリでバックアップJSONを書き出し、ここにアップロードしてください。<br>
+          今井屋の <strong>出庫記録</strong> が ZAIKO の <strong>入庫</strong> として取り込まれます。<br>
+          一度取り込んだエントリーは重複しません。
+        </p>
+
+        <div class="alert alert-light border small mb-3">
+          <strong>今井屋アプリでの手順：</strong><br>
+          ⚙️ 設定 → バックアップ → JSONをダウンロード
+        </div>
+
+        <form method="post" enctype="multipart/form-data">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">バックアップJSONファイル</label>
+            <input type="file" name="file" class="form-control" accept=".json" required>
+          </div>
+          <button type="submit" class="btn btn-primary w-100">
+            <i class="bi bi-cloud-download me-1"></i>同期実行
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card mt-3">
+      <div class="card-header small"><i class="bi bi-info-circle me-1"></i>同期の仕組み</div>
+      <div class="card-body small text-muted">
+        <ul class="mb-0 ps-3">
+          <li>今井屋で <code>type=out</code>（出荷）の記録のみ取り込みます</li>
+          <li>商品は<strong>商品名</strong>で照合します</li>
+          <li>取り込み済みの記録は再取り込みされません</li>
+          <li>取り込んだ記録は履歴に「今井屋出荷」として表示されます</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header">または → <a href="{{ url_for('receive') }}" class="text-white">手動で一括入庫する</a></div>
+      <div class="card-body text-muted small">
+        今井屋から商品を受け取った際に、その場で数量を入力して入庫できます。
+        <a href="{{ url_for('receive') }}" class="btn btn-outline-primary btn-sm mt-2 d-block">
+          <i class="bi bi-box-arrow-in-down me-1"></i>一括入庫画面を開く
+        </a>
+      </div>
+    </div>
+
+    <div class="card mt-3">
+      <div class="card-header">ZAIKO 商品数</div>
+      <div class="card-body">
+        <div class="fs-2 fw-bold text-primary">{{ products|length }}<small class="fs-6 fw-normal ms-1">種類</small></div>
+        <div class="text-muted small">今井屋と同じ商品マスタです</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

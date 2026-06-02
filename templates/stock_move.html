@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% set labels = {'in': '入庫', 'out': '出庫', 'adjust': '棚卸調整'} %}
+{% set icons  = {'in': 'box-arrow-in-down', 'out': 'box-arrow-up', 'adjust': 'clipboard-check'} %}
+{% block title %}{{ labels[move_type] }}{% endblock %}
+
+{% block content %}
+<div class="page-title">
+  <i class="bi bi-{{ icons[move_type] }} me-2"></i>{{ labels[move_type] }}
+</div>
+
+{# カテゴリ別に商品をまとめる #}
+{% set cat_map = {} %}
+{% for p in products %}
+  {% set cat = p.category or '未分類' %}
+  {% if cat not in cat_map %}{% set _ = cat_map.update({cat: []}) %}{% endif %}
+  {% set _ = cat_map[cat].append(p) %}
+{% endfor %}
+
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header">{{ labels[move_type] }}入力</div>
+      <div class="card-body">
+        <form method="post" id="move-form">
+
+          {# ① カテゴリ絞り込み #}
+          <div class="mb-2">
+            <label class="form-label fw-semibold">カテゴリで絞り込む</label>
+            <select id="cat-filter" class="form-select">
+              <option value="">── 全カテゴリ ──</option>
+              {% for cat in cat_map.keys() | sort %}
+              <option value="{{ cat }}">{{ cat }}（{{ cat_map[cat] | length }}件）</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          {# ② 商品選択（JSで動的に再構築） #}
+          <div class="mb-3">
+            <label class="form-label fw-semibold">商品 <span class="text-danger">*</span></label>
+            <select name="product_id" id="product_id" class="form-select" required size="8"
+                    style="height:auto; min-height:160px;"></select>
+          </div>
+
+          {# ③ 在庫情報バッジ #}
+          <div id="stock-info" class="alert py-2 small mb-3 alert-light d-none">
+            現在在庫：<strong id="cur-stock">-</strong>
+            <span id="alert-badge" class="badge bg-warning text-dark ms-2 d-none">要補充</span>
+          </div>
+
+          {# ④ 数量 #}
+          <div class="mb-3">
+            <label class="form-label fw-semibold">
+              {% if move_type == 'adjust' %}棚卸後の実在庫数{% else %}数量{% endif %}
+              <span class="text-danger">*</span>
+            </label>
+            <input type="number" name="quantity" id="quantity" class="form-control form-control-lg"
+                   min="0" required placeholder="0">
+          </div>
+
+          {# ⑤ 理由・担当者 #}
+          <div class="row g-2 mb-4">
+            <div class="col">
+              <label class="form-label fw-semibold">
+                {% if move_type == 'in' %}仕入先・理由
+                {% elif move_type == 'out' %}出庫先・理由
+                {% else %}棚卸理由{% endif %}
+              </label>
+              <input type="text" name="reason" class="form-control"
+                     placeholder="{% if move_type == 'adjust' %}棚卸{% endif %}">
+            </div>
+            <div class="col-auto" style="min-width:110px">
+              <label class="form-label fw-semibold">担当者</label>
+              <input type="text" name="operator" class="form-control">
+            </div>
+          </div>
+
+          <button type="submit"
+                  class="btn btn-{% if move_type=='in' %}success{% elif move_type=='out' %}danger{% else %}warning{% endif %} w-100 btn-lg">
+            <i class="bi bi-check-lg me-1"></i>{{ labels[move_type] }}を記録
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header">
+        <a href="{{ url_for('history') }}?type={{ move_type }}" class="text-white text-decoration-none">
+          最近の{{ labels[move_type] }}履歴 <i class="bi bi-arrow-right-short"></i>
+        </a>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead class="table-light">
+            <tr><th>日時</th><th>商品</th><th class="text-end">数量</th><th>担当</th></tr>
+          </thead>
+          <tbody id="recent-logs">
+            <tr><td colspan="4" class="text-muted text-center py-3 small">
+              <a href="{{ url_for('history') }}?type={{ move_type }}">全履歴を見る →</a>
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {# カテゴリ別商品数 mini-table #}
+    <div class="card mt-3">
+      <div class="card-header small">カテゴリ別商品数</div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <tbody>
+            {% for cat in cat_map.keys() | sort %}
+            <tr style="cursor:pointer" onclick="filterCatClick('{{ cat }}')">
+              <td><span class="badge bg-secondary">{{ cat }}</span></td>
+              <td class="text-end text-muted small">{{ cat_map[cat] | length }}件</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script id="product-data" type="application/json">
+{{ products | tojson }}
+</script>
+<script>
+  const ALL_PRODUCTS = JSON.parse(document.getElementById('product-data').textContent);
+
+  const catFilter  = document.getElementById('cat-filter');
+  const prodSel    = document.getElementById('product_id');
+  const info       = document.getElementById('stock-info');
+  const curStock   = document.getElementById('cur-stock');
+  const alertBadge = document.getElementById('alert-badge');
+
+  // カテゴリ別にグループ化（名前順）
+  function groupByCategory(products) {
+    const map = {};
+    for (const p of products) {
+      const cat = p.category || '未分類';
+      if (!map[cat]) map[cat] = [];
+      map[cat].push(p);
+    }
+    for (const cat in map) {
+      map[cat].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+    }
+    return map;
+  }
+
+  // セレクトを再構築
+  function buildSelect(filterCat) {
+    prodSel.innerHTML = '';
+    const placeholder = new Option('── 商品を選んでください ──', '');
+    prodSel.appendChild(placeholder);
+
+    const map = groupByCategory(ALL_PRODUCTS);
+    const cats = Object.keys(map).sort((a, b) => a.localeCompare(b, 'ja'));
+
+    for (const cat of cats) {
+      if (filterCat && cat !== filterCat) continue;
+
+      const og = document.createElement('optgroup');
+      og.label = '▸ ' + cat;
+
+      for (const p of map[cat]) {
+        const alert = p.alert_level > 0 && p.stock <= p.alert_level;
+        const opt = new Option(
+          p.name + '　' + p.stock + p.unit + (alert ? ' ⚠' : ''),
+          p.id
+        );
+        opt.dataset.stock = p.stock;
+        opt.dataset.unit  = p.unit;
+        opt.dataset.alert = p.alert_level;
+        og.appendChild(opt);
+      }
+      prodSel.appendChild(og);
+    }
+
+    info.classList.add('d-none');
+  }
+
+  // 右側カテゴリ表から絞り込み
+  function filterCatClick(cat) {
+    catFilter.value = cat;
+    buildSelect(cat);
+  }
+
+  catFilter.addEventListener('change', () => buildSelect(catFilter.value));
+
+  // 商品選択時に在庫情報を表示
+  prodSel.addEventListener('change', () => {
+    const opt = prodSel.selectedOptions[0];
+    if (!opt || !opt.value) { info.classList.add('d-none'); return; }
+
+    const stock = parseInt(opt.dataset.stock);
+    const unit  = opt.dataset.unit;
+    const alert = parseInt(opt.dataset.alert);
+
+    curStock.textContent = stock + unit;
+    if (alert > 0 && stock <= alert) {
+      info.className = 'alert py-2 small mb-3 alert-warning';
+      alertBadge.classList.remove('d-none');
+    } else {
+      info.className = 'alert py-2 small mb-3 alert-light';
+      alertBadge.classList.add('d-none');
+    }
+    info.classList.remove('d-none');
+  });
+
+  // 初期表示（全商品）
+  buildSelect('');
+</script>
+{% endblock %}

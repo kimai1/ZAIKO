@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == 'new' %}商品登録{% else %}商品編集{% endif %}{% endblock %}
+
+{% block content %}
+<div class="page-title">
+  <i class="bi bi-{% if mode == 'new' %}plus-circle{% else %}pencil-square{% endif %} me-2"></i>
+  {% if mode == 'new' %}商品登録{% else %}商品編集{% endif %}
+</div>
+
+<div class="card" style="max-width:640px">
+  <div class="card-body">
+    <form method="post">
+      <div class="row g-3">
+        <div class="col-md-5">
+          <label class="form-label fw-semibold">商品コード <span class="text-danger">*</span></label>
+          <input type="text" name="code" class="form-control" required
+                 value="{{ product.code if product else '' }}" placeholder="例: ITEM-001">
+        </div>
+        <div class="col-md-7">
+          <label class="form-label fw-semibold">商品名 <span class="text-danger">*</span></label>
+          <input type="text" name="name" class="form-control" required
+                 value="{{ product.name if product else '' }}">
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">カテゴリ</label>
+          <input type="text" name="category" class="form-control" list="cat-list"
+                 value="{{ product.category if product else '' }}">
+          <datalist id="cat-list">
+            {% for c in categories %}<option value="{{ c }}">{% endfor %}
+          </datalist>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">単位</label>
+          <input type="text" name="unit" class="form-control"
+                 value="{{ product.unit if product else '個' }}" placeholder="個・箱・kg">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">アラート在庫数</label>
+          <input type="number" name="alert_level" class="form-control" min="0"
+                 value="{{ product.alert_level if product else 0 }}">
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">原価 (円)</label>
+          <input type="number" name="cost_price" class="form-control" min="0" step="0.01"
+                 value="{{ product.cost_price if product else '' }}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">売価 (円)</label>
+          <input type="number" name="sell_price" class="form-control" min="0" step="0.01"
+                 value="{{ product.sell_price if product else '' }}">
+        </div>
+
+        <div class="col-12">
+          <label class="form-label fw-semibold">メモ</label>
+          <textarea name="memo" class="form-control" rows="2">{{ product.memo if product else '' }}</textarea>
+        </div>
+      </div>
+
+      <div class="mt-4 d-flex gap-2">
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-check-lg me-1"></i>{% if mode == 'new' %}登録{% else %}更新{% endif %}
+        </button>
+        <a href="{{ url_for('products') }}" class="btn btn-outline-secondary">キャンセル</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

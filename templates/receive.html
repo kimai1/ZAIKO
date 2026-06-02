@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}一括入庫（今井屋受け取り）{% endblock %}
+
+{% block extra_head %}
+<style>
+  .prod-row { transition: background .15s; }
+  .prod-row.has-qty { background: #f0fff4; }
+  .qty-input { width: 80px; text-align: center; }
+  .cat-header { background: #1a4a7a; color: #fff; font-size:.8rem;
+                padding: 4px 12px; font-weight: 600; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="page-title mb-0"><i class="bi bi-box-arrow-in-down me-2"></i>一括入庫（今井屋受け取り）</div>
+  <a href="{{ url_for('sync_imaiya') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left-right me-1"></i>JSONで自動同期
+  </a>
+</div>
+
+<form method="post" id="receive-form">
+  <div class="card mb-3">
+    <div class="card-body py-2">
+      <div class="row g-2 align-items-center">
+        <div class="col-auto">
+          <input type="text" name="reason" class="form-control form-control-sm"
+                 value="今井屋より入荷" placeholder="入庫理由">
+        </div>
+        <div class="col-auto">
+          <input type="text" name="operator" class="form-control form-control-sm"
+                 placeholder="担当者名">
+        </div>
+        <div class="col-auto">
+          <input type="text" id="search-box" class="form-control form-control-sm"
+                 placeholder="🔍 商品名で絞り込み">
+        </div>
+        <div class="col-auto ms-auto">
+          <span class="badge bg-success" id="count-badge">0件 入力中</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body p-0">
+      <table class="table table-sm table-hover mb-0" id="prod-table">
+        <thead class="table-light">
+          <tr>
+            <th>商品名</th>
+            <th style="width:90px">現在庫</th>
+            <th style="width:110px" class="text-center">入庫数量</th>
+            <th style="width:80px" class="text-center text-success fw-bold">入庫後</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set ns = namespace(prev_cat='') %}
+          {% for p in products | sort(attribute='category') %}
+            {% if p.category != ns.prev_cat %}
+            <tr class="cat-row" data-cat="{{ p.category or '未分類' }}">
+              <td colspan="4" class="cat-header">
+                {{ p.category or '未分類' }}
+              </td>
+            </tr>
+            {% set ns.prev_cat = p.category %}
+            {% endif %}
+            <tr class="prod-row" data-name="{{ p.name }}" data-cat="{{ p.category or '未分類' }}">
+              <td>
+                {{ p.name }}
+                {% if p.stock == 0 %}
+                  <span class="badge bg-danger ms-1" style="font-size:.6rem">切れ</span>
+                {% elif p.alert_level > 0 and p.stock <= p.alert_level %}
+                  <span class="badge bg-warning text-dark ms-1" style="font-size:.6rem">補充</span>
+                {% endif %}
+              </td>
+              <td class="text-muted">{{ p.stock }} {{ p.unit }}</td>
+              <td class="text-center">
+                <input type="number" name="qty_{{ p.id }}"
+                       class="form-control form-control-sm qty-input d-inline-block"
+                       min="0" placeholder="0"
+                       data-unit="{{ p.unit }}"
+                       data-stock="{{ p.stock }}"
+                       data-pid="{{ p.id }}">
+              </td>
+              <td class="text-center fw-bold text-success after-stock" data-stock="{{ p.stock }}">
+                —
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sticky-bottom bg-white border-top pt-2 pb-3 mt-3 d-flex gap-2 justify-content-end">
+    <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">キャンセル</a>
+    <button type="submit" class="btn btn-success px-4" id="submit-btn" disabled>
+      <i class="bi bi-check-lg me-1"></i>入庫を確定する（<span id="submit-count">0</span>商品）
+    </button>
+  </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  const qtyInputs  = document.querySelectorAll('.qty-input');
+  const countBadge = document.getElementById('count-badge');
+  const submitBtn  = document.getElementById('submit-btn');
+  const submitCount = document.getElementById('submit-count');
+  const searchBox  = document.getElementById('search-box');
+
+  function updateSummary() {
+    let count = 0;
+    qtyInputs.forEach(inp => {
+      const qty = parseInt(inp.value) || 0;
+      const row = inp.closest('tr');
+      const afterCell = row.querySelector('.after-stock');
+      const stock = parseInt(inp.dataset.stock) || 0;
+      const unit = inp.dataset.unit || '';
+
+      if (qty > 0) {
+        count++;
+        row.classList.add('has-qty');
+        afterCell.textContent = (stock + qty) + unit;
+      } else {
+        row.classList.remove('has-qty');
+        afterCell.textContent = '—';
+      }
+    });
+    countBadge.textContent = count + '件 入力中';
+    submitBtn.disabled = count === 0;
+    submitCount.textContent = count;
+  }
+
+  qtyInputs.forEach(inp => inp.addEventListener('input', updateSummary));
+
+  // 商品名絞り込み
+  searchBox.addEventListener('input', () => {
+    const q = searchBox.value.toLowerCase();
+    const rows = document.querySelectorAll('.prod-row');
+    const catRows = document.querySelectorAll('.cat-row');
+
+    // カテゴリ行の表示制御
+    const visibleCats = new Set();
+    rows.forEach(row => {
+      const name = row.dataset.name?.toLowerCase() || '';
+      const show = !q || name.includes(q);
+      row.style.display = show ? '' : 'none';
+      if (show) visibleCats.add(row.dataset.cat);
+    });
+
+    catRows.forEach(row => {
+      row.style.display = visibleCats.has(row.dataset.cat) ? '' : 'none';
+    });
+  });
+
+  // Enterで次の行に移動
+  qtyInputs.forEach((inp, i) => {
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const next = qtyInputs[i + 1];
+        if (next) next.focus();
+      }
+    });
+  });
+</script>
+{% endblock %}

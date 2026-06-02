@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}カテゴリ管理{% endblock %}
+
+{% block content %}
+<div class="page-title"><i class="bi bi-tags me-2"></i>カテゴリ管理</div>
+
+<div class="row g-4">
+  <div class="col-md-5">
+    <div class="card">
+      <div class="card-header">新規追加</div>
+      <div class="card-body">
+        <form method="post">
+          <input type="hidden" name="action" value="add">
+          <div class="input-group">
+            <input type="text" name="name" class="form-control" placeholder="カテゴリ名" required>
+            <button class="btn btn-primary"><i class="bi bi-plus-lg"></i> 追加</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-7">
+    <div class="card">
+      <div class="card-header">カテゴリ一覧</div>
+      <div class="card-body p-0">
+        {% if categories %}
+        <ul class="list-group list-group-flush">
+          {% for c in categories %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-tag me-2 text-muted"></i>{{ c }}</span>
+            <form method="post" onsubmit="return confirm('「{{ c }}」を削除しますか？')">
+              <input type="hidden" name="action" value="delete">
+              <input type="hidden" name="name" value="{{ c }}">
+              <button class="btn btn-sm btn-outline-danger py-0"><i class="bi bi-trash"></i></button>
+            </form>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted text-center py-4">カテゴリがありません</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

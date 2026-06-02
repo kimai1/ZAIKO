@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+{% block title %}在庫レポート{% endblock %}
+
+{% block extra_head %}
+<style>
+  .val-box { background:#f0f5ff; border-radius:10px; padding:14px 18px; }
+  .val-box .label { font-size:.72rem; color:#888; margin-bottom:2px; }
+  .val-box .val   { font-size:1.45rem; font-weight:700; color:#1a4a7a; }
+  .val-box .val small { font-size:.85rem; font-weight:400; color:#666; }
+
+  .section-title {
+    font-size:1.05rem; font-weight:700; color:#1a4a7a;
+    border-left:4px solid #1a4a7a; padding-left:10px;
+    margin:28px 0 12px;
+  }
+
+  /* 売上ランキングバー */
+  .rank-bar-wrap { background:#eef2f7; border-radius:4px; height:18px; }
+  .rank-bar      { background:#1a4a7a; border-radius:4px; height:18px;
+                   transition:width .4s ease; min-width:4px; }
+  .rank-no       { width:32px; font-weight:700; color:#1a4a7a; }
+
+  /* 不良在庫 重症度バッジ */
+  .badge-dead-high { background:#c0392b; color:#fff; }
+  .badge-dead-mid  { background:#e67e22; color:#fff; }
+  .badge-dead-low  { background:#f39c12; color:#fff; }
+
+  @media print {
+    .sidebar, .btn, .no-print, nav { display:none !important; }
+    .main { margin-left:0 !important; }
+    .card { box-shadow:none !important; border:1px solid #ddd !important; break-inside:avoid; }
+    .section-title { break-before:auto; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{# ── ヘッダー ── #}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="page-title mb-0"><i class="bi bi-bar-chart-line me-2"></i>在庫レポート</div>
+  <div class="d-flex gap-2 no-print">
+    <button onclick="window.print()" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-printer me-1"></i>印刷
+    </button>
+    <a href="{{ url_for('report_pdf') }}" class="btn btn-outline-danger btn-sm">
+      <i class="bi bi-filetype-pdf me-1"></i>PDF
+    </a>
+  </div>
+</div>
+<p class="text-muted small no-print mb-3">作成日時：{{ generated_at }}</p>
+
+{# ── サマリーカード ── #}
+<div class="row g-3 mb-2">
+  <div class="col-6 col-md-3">
+    <div class="val-box">
+      <div class="label">総商品種類</div>
+      <div class="val">{{ products|length }}<small> 種</small></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="val-box">
+      <div class="label">不良在庫（90日超）</div>
+      <div class="val {% if dead_stock %}text-danger{% endif %}">
+        {{ dead_stock|length }}<small> 件</small>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="val-box">
+      <div class="label">原価在庫評価額</div>
+      <div class="val">{% if total_cost %}¥{{ '{:,.0f}'.format(total_cost) }}{% else %}—{% endif %}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="val-box">
+      <div class="label">売価在庫評価額</div>
+      <div class="val">{% if total_sell %}¥{{ '{:,.0f}'.format(total_sell) }}{% else %}—{% endif %}</div>
+    </div>
+  </div>
+</div>
+
+{# ── よく売れた商品 ── #}
+<div class="section-title"><i class="bi bi-trophy-fill text-warning me-2"></i>よく売れた商品 TOP{{ top_sellers|length }}</div>
+
+{% if top_sellers %}
+<div class="card mb-1">
+  <div class="card-body p-0">
+    <table class="table table-sm table-hover mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th style="width:36px">#</th>
+          <th>商品名</th>
+          <th style="width:80px">カテゴリ</th>
+          <th style="width:120px">出庫数（累計）</th>
+          <th style="width:200px" class="no-print"></th>
+          <th style="width:80px" class="text-end">回数</th>
+          <th style="width:120px" class="text-end">最終出庫日</th>
+          <th style="width:80px" class="text-end">現在庫</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in top_sellers %}
+        <tr>
+          <td class="rank-no">
+            {% if loop.index == 1 %}🥇
+            {% elif loop.index == 2 %}🥈
+            {% elif loop.index == 3 %}🥉
+            {% else %}<span class="text-muted">{{ loop.index }}</span>
+            {% endif %}
+          </td>
+          <td class="fw-semibold">{{ p.name }}</td>
+          <td><span class="badge bg-secondary">{{ p.category or '未分類' }}</span></td>
+          <td class="fw-bold text-primary">{{ p.total_out }} {{ p.unit }}</td>
+          <td class="no-print" style="padding-right:14px">
+            <div class="rank-bar-wrap">
+              <div class="rank-bar"
+                   style="width:{{ [(p.total_out / max_out * 100)|int, 100]|min }}%"></div>
+            </div>
+          </td>
+          <td class="text-end text-muted small">{{ p.out_count }}回</td>
+          <td class="text-end text-muted small">{{ p.last_out[:10] if p.last_out else '—' }}</td>
+          <td class="text-end fw-bold {% if p.stock == 0 %}text-danger{% endif %}">
+            {{ p.stock }}{{ p.unit }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card mb-1">
+  <div class="card-body text-center py-4 text-muted">
+    <i class="bi bi-inbox fs-2 d-block mb-2"></i>
+    出庫の記録がまだありません。<br>
+    <small>出庫を記録すると、ここにランキングが表示されます。</small>
+  </div>
+</div>
+{% endif %}
+
+{# ── 不良在庫 ── #}
+<div class="section-title"><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>不良在庫（在庫あり・90日以上出庫なし）</div>
+
+{% if dead_stock %}
+<div class="card mb-1">
+  <div class="card-body p-0">
+    <table class="table table-sm table-hover mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>商品名</th>
+          <th style="width:80px">カテゴリ</th>
+          <th style="width:90px" class="text-end">現在庫</th>
+          <th style="width:110px" class="text-end">原価評価</th>
+          <th style="width:130px" class="text-center">滞留期間</th>
+          <th style="width:120px" class="text-end">最終出庫日</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in dead_stock %}
+        {% set days = p.days_since or 0 %}
+        <tr>
+          <td class="fw-semibold">{{ p.name }}</td>
+          <td><span class="badge bg-secondary">{{ p.category or '未分類' }}</span></td>
+          <td class="text-end fw-bold">{{ p.stock }} {{ p.unit }}</td>
+          <td class="text-end small">
+            {% if p.cost_price and p.stock %}
+              ¥{{ '{:,.0f}'.format(p.cost_price * p.stock) }}
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-center">
+            {% if days >= 365 %}
+              <span class="badge badge-dead-high">{{ days }}日（{{ (days/365)|int }}年超）</span>
+            {% elif days >= 180 %}
+              <span class="badge badge-dead-mid">{{ days }}日</span>
+            {% else %}
+              <span class="badge badge-dead-low">{{ days }}日</span>
+            {% endif %}
+          </td>
+          <td class="text-end text-muted small">
+            {{ p.last_out_at[:10] if p.last_out_at else '出庫記録なし' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="table-light">
+        <tr>
+          <td colspan="2" class="fw-bold">合計 {{ dead_stock|length }} 件</td>
+          <td></td>
+          <td class="text-end fw-bold small">
+            {% set dead_cost = namespace(total=0) %}
+            {% for p in dead_stock %}
+              {% if p.cost_price and p.stock %}
+                {% set dead_cost.total = dead_cost.total + p.cost_price * p.stock %}
+              {% endif %}
+            {% endfor %}
+            {% if dead_cost.total %}¥{{ '{:,.0f}'.format(dead_cost.total) }}{% else %}—{% endif %}
+          </td>
+          <td colspan="2"></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card mb-1">
+  <div class="card-body text-center py-4 text-muted">
+    <i class="bi bi-check-circle fs-2 d-block mb-2 text-success"></i>
+    不良在庫はありません。
+  </div>
+</div>
+{% endif %}
+
+{# ── カテゴリ別集計 ── #}
+<div class="section-title"><i class="bi bi-tags me-2"></i>カテゴリ別集計</div>
+<div class="card mb-1">
+  <div class="card-body p-0">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>カテゴリ</th>
+          <th class="text-end">商品数</th>
+          <th class="text-end">総在庫</th>
+          <th class="text-end">原価評価</th>
+          <th class="text-end">売価評価</th>
+          <th class="text-end text-danger">アラート</th>
+          <th class="text-end text-warning">在庫切れ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in categories %}
+        <tr>
+          <td><span class="badge bg-secondary">{{ c.cat }}</span></td>
+          <td class="text-end">{{ c.cnt }}</td>
+          <td class="text-end">{{ c.total_stock or 0 }}</td>
+          <td class="text-end small">{% if c.total_cost %}¥{{ '{:,.0f}'.format(c.total_cost) }}{% else %}—{% endif %}</td>
+          <td class="text-end small">{% if c.total_sell %}¥{{ '{:,.0f}'.format(c.total_sell) }}{% else %}—{% endif %}</td>
+          <td class="text-end {% if c.alert_cnt > 0 %}text-danger fw-bold{% endif %}">{{ c.alert_cnt }}</td>
+          <td class="text-end {% if c.zero_cnt > 0 %}text-warning fw-bold{% endif %}">{{ c.zero_cnt }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="table-light fw-bold">
+        <tr>
+          <td>合計</td>
+          <td class="text-end">{{ products|length }}</td>
+          <td class="text-end">{{ categories|sum(attribute='total_stock') or 0 }}</td>
+          <td class="text-end small">{% if total_cost %}¥{{ '{:,.0f}'.format(total_cost) }}{% else %}—{% endif %}</td>
+          <td class="text-end small">{% if total_sell %}¥{{ '{:,.0f}'.format(total_sell) }}{% else %}—{% endif %}</td>
+          <td class="text-end text-danger">{{ categories|sum(attribute='alert_cnt') }}</td>
+          <td class="text-end text-warning">{{ categories|sum(attribute='zero_cnt') }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+{# ── 全商品一覧（折り畳み） ── #}
+<div class="section-title no-print">
+  <a class="text-decoration-none" data-bs-toggle="collapse" href="#all-products-table">
+    <i class="bi bi-list-ul me-2"></i>全商品一覧
+    <i class="bi bi-chevron-down ms-1" style="font-size:.8rem"></i>
+  </a>
+</div>
+<div class="collapse" id="all-products-table">
+  <div class="card">
+    <div class="card-body p-0">
+      <table class="table table-sm table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>コード</th><th>商品名</th><th>カテゴリ</th>
+            <th class="text-end">在庫</th><th class="text-end">アラート</th>
+            <th class="text-end">原価</th><th class="text-end">売価</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set ns = namespace(prev_cat='') %}
+          {% for p in products %}
+            {% if p.category != ns.prev_cat %}
+              <tr class="table-secondary">
+                <td colspan="7" class="fw-bold small py-1 ps-3">
+                  <i class="bi bi-tag me-1"></i>{{ p.category or '未分類' }}
+                </td>
+              </tr>
+              {% set ns.prev_cat = p.category %}
+            {% endif %}
+            <tr {% if p.alert_level > 0 and p.stock <= p.alert_level %}class="stock-low"{% endif %}>
+              <td><code class="small">{{ p.code }}</code></td>
+              <td>{{ p.name }}
+                {% if p.stock == 0 %}<span class="badge bg-danger ms-1" style="font-size:.6rem">切れ</span>
+                {% elif p.alert_level > 0 and p.stock <= p.alert_level %}
+                  <span class="badge bg-warning text-dark ms-1" style="font-size:.6rem">補充</span>
+                {% endif %}
+              </td>
+              <td class="text-muted small">{{ p.category or '未分類' }}</td>
+              <td class="text-end fw-bold {% if p.stock == 0 %}text-danger{% endif %}">{{ p.stock }} {{ p.unit }}</td>
+              <td class="text-end text-muted small">{{ p.alert_level }}</td>
+              <td class="text-end small">{% if p.cost_price %}¥{{ '{:,.0f}'.format(p.cost_price) }}{% endif %}</td>
+              <td class="text-end small">{% if p.sell_price %}¥{{ '{:,.0f}'.format(p.sell_price) }}{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

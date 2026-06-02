@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: zaiko
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: DATA_DIR
+        value: /data
+      - key: FLASK_ENV
+        value: production
+    disk:
+      name: zaiko-data
+      mountPath: /data
+      sizeGB: 1

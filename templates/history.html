@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}入出庫履歴{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="page-title mb-0"><i class="bi bi-clock-history me-2"></i>入出庫履歴</div>
+  <div class="dropdown">
+    <button class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+      <i class="bi bi-download"></i> エクスポート
+    </button>
+    <ul class="dropdown-menu">
+      <li><a class="dropdown-item" href="{{ url_for('export_logs_csv_view') }}"><i class="bi bi-filetype-csv me-1"></i>CSV</a></li>
+      <li><a class="dropdown-item" href="{{ url_for('export_logs_excel_view') }}"><i class="bi bi-file-earmark-excel me-1"></i>Excel</a></li>
+    </ul>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-center">
+      <div class="col-auto">
+        <select name="product_id" class="form-select form-select-sm">
+          <option value="">全商品</option>
+          {% for p in products %}
+          <option value="{{ p.id }}" {% if product_id == p.id|string %}selected{% endif %}>{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <select name="type" class="form-select form-select-sm">
+          <option value="">全区分</option>
+          <option value="in"     {% if move_type=='in' %}selected{% endif %}>入庫</option>
+          <option value="out"    {% if move_type=='out' %}selected{% endif %}>出庫</option>
+          <option value="adjust" {% if move_type=='adjust' %}selected{% endif %}>棚卸調整</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <select name="days" class="form-select form-select-sm">
+          <option value="">全期間</option>
+          <option value="7"  {% if days=='7' %}selected{% endif %}>7日以内</option>
+          <option value="30" {% if days=='30' %}selected{% endif %}>30日以内</option>
+          <option value="90" {% if days=='90' %}selected{% endif %}>90日以内</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> 絞込</button>
+        <a href="{{ url_for('history') }}" class="btn btn-sm btn-outline-secondary">クリア</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    {% if logs %}
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>日時</th><th>商品名</th><th>コード</th>
+          <th>区分</th><th class="text-end">数量</th>
+          <th class="text-end">変動前</th><th class="text-end">変動後</th>
+          <th>理由</th><th>担当者</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in logs %}
+        <tr>
+          <td class="text-muted small">{{ l.logged_at }}</td>
+          <td>{{ l.product_name }}</td>
+          <td><code>{{ l.product_code }}</code></td>
+          <td>
+            {% if l.type == 'in' %}<span class="badge badge-in">入庫</span>
+            {% elif l.type == 'out' %}<span class="badge badge-out">出庫</span>
+            {% else %}<span class="badge badge-adjust">棚卸</span>{% endif %}
+          </td>
+          <td class="text-end">{{ l.quantity }} {{ l.unit }}</td>
+          <td class="text-end text-muted">{{ l.before_stock }}</td>
+          <td class="text-end fw-bold">{{ l.after_stock }}</td>
+          <td class="small">{{ l.reason }}</td>
+          <td class="small">{{ l.operator }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="text-muted small text-end p-2">{{ logs|length }} 件</div>
+    {% else %}
+    <p class="text-muted text-center py-5">該当する履歴がありません</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
