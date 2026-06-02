@@ -1,0 +1,38 @@
+<div class="nav-section">メニュー</div>
+<a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint=='index' %}active{% endif %}">
+  <i class="bi bi-speedometer2"></i> ダッシュボード
+</a>
+<a href="{{ url_for('products') }}" class="nav-link {% if 'product' in (request.endpoint or '') %}active{% endif %}">
+  <i class="bi bi-box-seam"></i> 商品一覧
+</a>
+
+<div class="nav-section">在庫操作</div>
+<a href="{{ url_for('receive') }}" class="nav-link {% if request.endpoint=='receive' %}active{% endif %}">
+  <i class="bi bi-shop"></i> 今井屋から入荷
+</a>
+<a href="{{ url_for('stock_in_view') }}" class="nav-link {% if request.endpoint=='stock_in_view' %}active{% endif %}">
+  <i class="bi bi-box-arrow-in-down"></i> 入庫
+</a>
+<a href="{{ url_for('stock_out_view') }}" class="nav-link {% if request.endpoint=='stock_out_view' %}active{% endif %}">
+  <i class="bi bi-box-arrow-up"></i> 出庫
+</a>
+<a href="{{ url_for('stock_adjust_view') }}" class="nav-link {% if request.endpoint=='stock_adjust_view' %}active{% endif %}">
+  <i class="bi bi-clipboard-check"></i> 棚卸調整
+</a>
+
+<div class="nav-section">管理</div>
+<a href="{{ url_for('history') }}" class="nav-link {% if request.endpoint=='history' %}active{% endif %}">
+  <i class="bi bi-clock-history"></i> 入出庫履歴
+</a>
+<a href="{{ url_for('report') }}" class="nav-link {% if request.endpoint=='report' %}active{% endif %}">
+  <i class="bi bi-bar-chart-line"></i> レポート
+</a>
+<a href="{{ url_for('categories') }}" class="nav-link {% if request.endpoint=='categories' %}active{% endif %}">
+  <i class="bi bi-tags"></i> カテゴリ
+</a>
+<a href="{{ url_for('import_json') }}" class="nav-link {% if request.endpoint=='import_json' %}active{% endif %}">
+  <i class="bi bi-upload"></i> インポート
+</a>
+<a href="{{ url_for('sync_imaiya') }}" class="nav-link {% if request.endpoint=='sync_imaiya' %}active{% endif %}">
+  <i class="bi bi-arrow-left-right"></i> 今井屋同期
+</a>

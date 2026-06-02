@@ -51,9 +51,9 @@
 </div>
 
 <div class="card">
-  <div class="card-body p-0">
+  <div class="card-body p-0"><div class="table-responsive-wrap">
     {% if logs %}
-    <table class="table table-sm table-hover mb-0">
+    <table class="table table-sm table-sm table-hover mb-0">
       <thead class="table-light">
         <tr>
           <th>日時</th><th>商品名</th><th>コード</th>
@@ -81,7 +81,7 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     <div class="text-muted small text-end p-2">{{ logs|length }} 件</div>
     {% else %}
     <p class="text-muted text-center py-5">該当する履歴がありません</p>

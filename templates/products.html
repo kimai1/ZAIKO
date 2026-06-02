@@ -49,9 +49,9 @@
 </div>
 
 <div class="card">
-  <div class="card-body p-0">
+  <div class="card-body p-0"><div class="table-responsive-wrap">
     {% if products %}
-    <table class="table table-hover mb-0">
+    <table class="table table-sm table-hover mb-0">
       <thead class="table-light">
         <tr>
           <th>コード</th><th>商品名</th><th>カテゴリ</th>
@@ -93,7 +93,7 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     {% else %}
     <p class="text-muted text-center py-5">商品が登録されていません</p>
     {% endif %}
