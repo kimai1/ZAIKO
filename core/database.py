@@ -4,10 +4,22 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-# ローカル: ~/.zaiko/zaiko.db  /  Render: /data/zaiko.db (DATA_DIR=/data)
-_data_dir = os.environ.get("DATA_DIR", str(Path.home() / ".zaiko"))
-APP_DIR = Path(_data_dir)
-APP_DIR.mkdir(parents=True, exist_ok=True)
+# ローカル: ~/.zaiko/zaiko.db  /  Render Disk: /data/zaiko.db  /  Render Free: /tmp/zaiko/zaiko.db
+def _resolve_data_dir():
+    candidate = os.environ.get("DATA_DIR", str(Path.home() / ".zaiko"))
+    p = Path(candidate)
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+        # 書き込みテスト
+        (p / ".write_test").touch()
+        (p / ".write_test").unlink()
+        return p
+    except OSError:
+        fallback = Path("/tmp/zaiko")
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+APP_DIR = _resolve_data_dir()
 DB_PATH = APP_DIR / "zaiko.db"
 
 

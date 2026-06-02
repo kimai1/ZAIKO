@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -21,7 +22,7 @@ from export.excel_export import export_products_excel, export_logs_excel
 from export.pdf_export import export_report_pdf
 
 app = Flask(__name__)
-app.secret_key = "zaiko-secret-2024"
+app.secret_key = os.environ.get("SECRET_KEY", "zaiko-secret-2024-local")
 
 
 @app.before_request
