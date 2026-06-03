@@ -1,33 +1,32 @@
 import os
-import sqlite3
+import psycopg2
+import psycopg2.pool
+import psycopg2.extras
 from contextlib import contextmanager
 from datetime import datetime
-from pathlib import Path
 
-# ローカル: ~/.zaiko/zaiko.db  /  Render Disk: /data/zaiko.db  /  Render Free: /tmp/zaiko/zaiko.db
-def _resolve_data_dir():
-    candidate = os.environ.get("DATA_DIR", str(Path.home() / ".zaiko"))
-    p = Path(candidate)
-    try:
-        p.mkdir(parents=True, exist_ok=True)
-        # 書き込みテスト
-        (p / ".write_test").touch()
-        (p / ".write_test").unlink()
-        return p
-    except OSError:
-        fallback = Path("/tmp/zaiko")
-        fallback.mkdir(parents=True, exist_ok=True)
-        return fallback
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
-APP_DIR = _resolve_data_dir()
-DB_PATH = APP_DIR / "zaiko.db"
+_pool = None
+
+
+def _get_pool():
+    global _pool
+    if _pool is None:
+        url = DATABASE_URL
+        if not url:
+            raise RuntimeError("DATABASE_URL 環境変数が設定されていません")
+        # Render/Heroku は postgres:// を使う場合がある
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+        _pool = psycopg2.pool.ThreadedConnectionPool(1, 5, dsn=url)
+    return _pool
 
 
 @contextmanager
 def get_conn():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
+    pool = _get_pool()
+    conn = pool.getconn()
     try:
         yield conn
         conn.commit()
@@ -35,14 +34,19 @@ def get_conn():
         conn.rollback()
         raise
     finally:
-        conn.close()
+        pool.putconn(conn)
+
+
+def _cur(conn):
+    return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
 
 def init_db():
     with get_conn() as conn:
-        conn.executescript("""
+        cur = _cur(conn)
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS products (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                id          SERIAL PRIMARY KEY,
                 code        TEXT UNIQUE NOT NULL,
                 name        TEXT NOT NULL,
                 category    TEXT DEFAULT '',
@@ -54,58 +58,75 @@ def init_db():
                 memo        TEXT DEFAULT '',
                 created_at  TEXT NOT NULL,
                 updated_at  TEXT NOT NULL
-            );
-
+            )
+        """)
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS stock_logs (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                product_id  INTEGER NOT NULL REFERENCES products(id),
-                type        TEXT NOT NULL CHECK(type IN ('in','out','adjust')),
-                quantity    INTEGER NOT NULL,
+                id           SERIAL PRIMARY KEY,
+                product_id   INTEGER NOT NULL REFERENCES products(id),
+                type         TEXT NOT NULL CHECK(type IN ('in','out','adjust')),
+                quantity     INTEGER NOT NULL,
                 before_stock INTEGER NOT NULL,
                 after_stock  INTEGER NOT NULL,
-                reason      TEXT DEFAULT '',
-                operator    TEXT DEFAULT '',
-                logged_at   TEXT NOT NULL
-            );
-
+                reason       TEXT DEFAULT '',
+                operator     TEXT DEFAULT '',
+                logged_at    TEXT NOT NULL
+            )
+        """)
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS categories (
-                id   INTEGER PRIMARY KEY AUTOINCREMENT,
+                id   SERIAL PRIMARY KEY,
                 name TEXT UNIQUE NOT NULL
-            );
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS imaiya_sync_log (
+                imaiya_entry_id TEXT PRIMARY KEY,
+                synced_at       TEXT NOT NULL,
+                log_id          INTEGER
+            )
         """)
 
 
-# ---------- product helpers ----------
+# ---------- helpers ----------
 
 def _now():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+# ---------- products ----------
+
 def get_all_products(category=None, alert_only=False, search=None):
     sql = "SELECT * FROM products WHERE 1=1"
     params = []
     if category:
-        sql += " AND category=?"
+        sql += " AND category=%s"
         params.append(category)
     if alert_only:
         sql += " AND alert_level > 0 AND stock <= alert_level"
     if search:
-        sql += " AND (name LIKE ? OR code LIKE ?)"
+        sql += " AND (name LIKE %s OR code LIKE %s)"
         params += [f"%{search}%", f"%{search}%"]
     sql += " ORDER BY category, name"
     with get_conn() as conn:
-        return [dict(r) for r in conn.execute(sql, params).fetchall()]
+        cur = _cur(conn)
+        cur.execute(sql, params)
+        return [dict(r) for r in cur.fetchall()]
 
 
 def get_product(product_id):
     with get_conn() as conn:
-        row = conn.execute("SELECT * FROM products WHERE id=?", (product_id,)).fetchone()
+        cur = _cur(conn)
+        cur.execute("SELECT * FROM products WHERE id=%s", (product_id,))
+        row = cur.fetchone()
         return dict(row) if row else None
 
 
 def get_product_by_code(code):
     with get_conn() as conn:
-        row = conn.execute("SELECT * FROM products WHERE code=?", (code,)).fetchone()
+        cur = _cur(conn)
+        cur.execute("SELECT * FROM products WHERE code=%s", (code,))
+        row = cur.fetchone()
         return dict(row) if row else None
 
 
@@ -113,32 +134,37 @@ def add_product(code, name, category="", unit="個", alert_level=0,
                 cost_price=0, sell_price=0, memo=""):
     now = _now()
     with get_conn() as conn:
-        conn.execute(
+        cur = _cur(conn)
+        cur.execute(
             """INSERT INTO products
                (code,name,category,unit,stock,alert_level,cost_price,sell_price,memo,created_at,updated_at)
-               VALUES (?,?,?,?,0,?,?,?,?,?,?)""",
+               VALUES (%s,%s,%s,%s,0,%s,%s,%s,%s,%s,%s)""",
             (code, name, category, unit, alert_level, cost_price, sell_price, memo, now, now)
         )
 
 
 def update_product(product_id, **fields):
     fields["updated_at"] = _now()
-    cols = ", ".join(f"{k}=?" for k in fields)
+    cols = ", ".join(f"{k}=%s" for k in fields)
     vals = list(fields.values()) + [product_id]
     with get_conn() as conn:
-        conn.execute(f"UPDATE products SET {cols} WHERE id=?", vals)
+        cur = _cur(conn)
+        cur.execute(f"UPDATE products SET {cols} WHERE id=%s", vals)
 
 
 def delete_product(product_id):
     with get_conn() as conn:
-        conn.execute("DELETE FROM stock_logs WHERE product_id=?", (product_id,))
-        conn.execute("DELETE FROM products WHERE id=?", (product_id,))
+        cur = _cur(conn)
+        cur.execute("DELETE FROM stock_logs WHERE product_id=%s", (product_id,))
+        cur.execute("DELETE FROM products WHERE id=%s", (product_id,))
 
 
 # ---------- stock movement ----------
 
 def _apply_movement(conn, product_id, move_type, quantity, reason, operator):
-    row = conn.execute("SELECT stock FROM products WHERE id=?", (product_id,)).fetchone()
+    cur = _cur(conn)
+    cur.execute("SELECT stock FROM products WHERE id=%s FOR UPDATE", (product_id,))
+    row = cur.fetchone()
     if not row:
         raise ValueError("商品が見つかりません")
     before = row["stock"]
@@ -150,15 +176,16 @@ def _apply_movement(conn, product_id, move_type, quantity, reason, operator):
             raise ValueError("在庫不足です")
     else:  # adjust
         after = quantity
-    conn.execute(
-        "UPDATE products SET stock=?, updated_at=? WHERE id=?",
+    cur.execute(
+        "UPDATE products SET stock=%s, updated_at=%s WHERE id=%s",
         (after, _now(), product_id)
     )
-    conn.execute(
+    cur.execute(
         """INSERT INTO stock_logs
            (product_id,type,quantity,before_stock,after_stock,reason,operator,logged_at)
-           VALUES (?,?,?,?,?,?,?,?)""",
-        (product_id, move_type, abs(quantity if move_type != "adjust" else after - before),
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+        (product_id, move_type,
+         abs(quantity if move_type != "adjust" else after - before),
          before, after, reason, operator, _now())
     )
     return after
@@ -190,76 +217,63 @@ def get_logs(product_id=None, move_type=None, days=None, limit=200):
     """
     params = []
     if product_id:
-        sql += " AND l.product_id=?"
+        sql += " AND l.product_id=%s"
         params.append(product_id)
     if move_type:
-        sql += " AND l.type=?"
+        sql += " AND l.type=%s"
         params.append(move_type)
     if days:
-        sql += " AND l.logged_at >= datetime('now',?)"
-        params.append(f"-{days} days")
-    sql += " ORDER BY l.logged_at DESC LIMIT ?"
+        sql += " AND l.logged_at::timestamp >= NOW() - (%s || ' days')::interval"
+        params.append(str(days))
+    sql += " ORDER BY l.logged_at DESC LIMIT %s"
     params.append(limit)
     with get_conn() as conn:
-        return [dict(r) for r in conn.execute(sql, params).fetchall()]
+        cur = _cur(conn)
+        cur.execute(sql, params)
+        return [dict(r) for r in cur.fetchall()]
 
 
 # ---------- categories ----------
 
 def get_categories():
     with get_conn() as conn:
-        return [r["name"] for r in conn.execute("SELECT name FROM categories ORDER BY name").fetchall()]
+        cur = _cur(conn)
+        cur.execute("SELECT name FROM categories ORDER BY name")
+        return [r["name"] for r in cur.fetchall()]
 
 
 def add_category(name):
     with get_conn() as conn:
-        conn.execute("INSERT OR IGNORE INTO categories(name) VALUES(?)", (name,))
+        cur = _cur(conn)
+        cur.execute(
+            "INSERT INTO categories(name) VALUES(%s) ON CONFLICT DO NOTHING",
+            (name,)
+        )
 
 
 def delete_category(name):
     with get_conn() as conn:
-        conn.execute("DELETE FROM categories WHERE name=?", (name,))
+        cur = _cur(conn)
+        cur.execute("DELETE FROM categories WHERE name=%s", (name,))
 
 
 # ---------- imaiya sync ----------
 
 def get_synced_imaiya_ids():
-    """今井屋から取り込み済みのentry idセットを返す"""
     with get_conn() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS imaiya_sync_log (
-                imaiya_entry_id TEXT PRIMARY KEY,
-                synced_at       TEXT NOT NULL,
-                log_id          INTEGER
-            )
-        """)
-        rows = conn.execute("SELECT imaiya_entry_id FROM imaiya_sync_log").fetchall()
-        return {r[0] for r in rows}
+        cur = _cur(conn)
+        cur.execute("SELECT imaiya_entry_id FROM imaiya_sync_log")
+        return {r["imaiya_entry_id"] for r in cur.fetchall()}
 
 
 def import_imaiya_entries(entries, products_map):
-    """
-    今井屋の inv_entries (type='out') を ZAIKO の stock_in として取り込む。
-    products_map: {imaiya_product_id: zaiko_product_id}
-    returns: (ok, skip, err, messages)
-    """
     synced = get_synced_imaiya_ids()
     ok = skip = err = 0
     messages = []
 
     for entry in entries:
         eid = entry.get("id", "")
-        if not eid:
-            skip += 1
-            continue
-
-        # 取り込み済みはスキップ
-        if eid in synced:
-            skip += 1
-            continue
-
-        # 出庫のみ（今井屋が出荷 = 藤川が受け取る）
-        if entry.get("type") != "out":
+        if not eid or eid in synced or entry.get("type") != "out":
             skip += 1
             continue
 
@@ -275,30 +289,38 @@ def import_imaiya_entries(entries, products_map):
             skip += 1
             continue
 
-        note = entry.get("note") or ""
-        date = entry.get("date") or ""
+        note  = entry.get("note") or ""
+        date  = entry.get("date") or ""
         staff = entry.get("staff") or ""
         reason = f"今井屋出荷 {date}" + (f" ({note})" if note else "")
 
         try:
             with get_conn() as conn:
-                row = conn.execute("SELECT stock FROM products WHERE id=?", (zaiko_pid,)).fetchone()
+                cur = _cur(conn)
+                cur.execute(
+                    "SELECT stock FROM products WHERE id=%s FOR UPDATE", (zaiko_pid,)
+                )
+                row = cur.fetchone()
                 if not row:
                     err += 1
                     continue
                 before = row["stock"]
-                after = before + qty
-                conn.execute("UPDATE products SET stock=?, updated_at=? WHERE id=?",
-                             (after, _now(), zaiko_pid))
-                conn.execute(
+                after  = before + qty
+                cur.execute(
+                    "UPDATE products SET stock=%s, updated_at=%s WHERE id=%s",
+                    (after, _now(), zaiko_pid)
+                )
+                cur.execute(
                     """INSERT INTO stock_logs
                        (product_id,type,quantity,before_stock,after_stock,reason,operator,logged_at)
-                       VALUES (?,?,?,?,?,?,?,?)""",
-                    (zaiko_pid, "in", qty, before, after, reason, staff or "今井屋", date + " 00:00:00")
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                    (zaiko_pid, "in", qty, before, after, reason,
+                     staff or "今井屋", date + " 00:00:00")
                 )
-                log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-                conn.execute(
-                    "INSERT OR IGNORE INTO imaiya_sync_log(imaiya_entry_id,synced_at,log_id) VALUES(?,?,?)",
+                log_id = cur.fetchone()["id"]
+                cur.execute(
+                    """INSERT INTO imaiya_sync_log(imaiya_entry_id,synced_at,log_id)
+                       VALUES(%s,%s,%s) ON CONFLICT DO NOTHING""",
                     (eid, _now(), log_id)
                 )
                 ok += 1
@@ -313,53 +335,69 @@ def import_imaiya_entries(entries, products_map):
 
 def restore_from_backup(data):
     products   = data.get("products", [])
-    logs       = data.get("logs", [])   # /api/backup 形式のみ（旧HTMLのentries は別構造のため非対応）
+    logs       = data.get("logs", [])
     categories = data.get("categories", [])
 
     with get_conn() as conn:
-        conn.execute("DELETE FROM stock_logs")
-        conn.execute("DELETE FROM products")
-        conn.execute("DELETE FROM categories")
-        conn.executescript("""
-            DELETE FROM sqlite_sequence WHERE name='products';
-            DELETE FROM sqlite_sequence WHERE name='stock_logs';
-            DELETE FROM sqlite_sequence WHERE name='categories';
-        """)
+        cur = _cur(conn)
+        cur.execute("DELETE FROM imaiya_sync_log")
+        cur.execute("DELETE FROM stock_logs")
+        cur.execute("DELETE FROM products")
+        cur.execute("DELETE FROM categories")
 
         for cat in categories:
-            conn.execute("INSERT OR IGNORE INTO categories(name) VALUES(?)", (cat,))
+            cur.execute(
+                "INSERT INTO categories(name) VALUES(%s) ON CONFLICT DO NOTHING",
+                (cat,)
+            )
 
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = _now()
         for p in products:
-            conn.execute("""
+            cur.execute("""
                 INSERT INTO products
                   (id,code,name,category,unit,stock,alert_level,
                    cost_price,sell_price,memo,created_at,updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """, (
-                p.get("id"), p.get("code",""), p.get("name",""),
-                p.get("category",""), p.get("unit","個"),
-                int(p.get("stock",0)), int(p.get("alert_level",0)),
-                float(p.get("cost_price",0)), float(p.get("sell_price",0)),
-                p.get("memo",""),
+                p.get("id"), p.get("code", ""), p.get("name", ""),
+                p.get("category", ""), p.get("unit", "個"),
+                int(p.get("stock", 0)), int(p.get("alert_level", 0)),
+                float(p.get("cost_price", 0)), float(p.get("sell_price", 0)),
+                p.get("memo", ""),
                 p.get("created_at", now), p.get("updated_at", now),
             ))
 
+        # SERIAL シーケンスをリセット
+        cur.execute("""
+            SELECT setval(pg_get_serial_sequence('products','id'),
+                          COALESCE(MAX(id), 1)) FROM products
+        """)
+        cur.execute("""
+            SELECT setval(pg_get_serial_sequence('categories','id'),
+                          COALESCE(MAX(id), 1)) FROM categories
+        """)
+
         for log in logs:
-            conn.execute("""
+            cur.execute("""
                 INSERT INTO stock_logs
                   (id,product_id,type,quantity,before_stock,after_stock,
                    reason,operator,logged_at)
-                VALUES (?,?,?,?,?,?,?,?,?)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """, (
                 log.get("id"), log.get("product_id"),
-                log.get("type","adjust"),
-                int(log.get("quantity",0)),
-                int(log.get("before_stock",0)),
-                int(log.get("after_stock",0)),
-                log.get("reason",""), log.get("operator",""),
+                log.get("type", "adjust"),
+                int(log.get("quantity", 0)),
+                int(log.get("before_stock", 0)),
+                int(log.get("after_stock", 0)),
+                log.get("reason", ""), log.get("operator", ""),
                 log.get("logged_at", now),
             ))
+
+        if logs:
+            cur.execute("""
+                SELECT setval(pg_get_serial_sequence('stock_logs','id'),
+                              COALESCE(MAX(id), 1)) FROM stock_logs
+            """)
 
     return len(products), len(logs), len(categories)
 
@@ -368,8 +406,9 @@ def restore_from_backup(data):
 
 def get_report_data():
     with get_conn() as conn:
-        # カテゴリ別集計
-        cat_rows = conn.execute("""
+        cur = _cur(conn)
+
+        cur.execute("""
             SELECT
                 COALESCE(NULLIF(category,''), '未分類') AS cat,
                 COUNT(*) AS cnt,
@@ -381,26 +420,21 @@ def get_report_data():
             FROM products
             GROUP BY cat
             ORDER BY cat
-        """).fetchall()
+        """)
+        cat_rows = cur.fetchall()
 
-        # 全商品（カテゴリ順）
-        all_prods = conn.execute(
-            "SELECT * FROM products ORDER BY category, name"
-        ).fetchall()
+        cur.execute("SELECT * FROM products ORDER BY category, name")
+        all_prods = cur.fetchall()
 
-        # 直近30日の入出庫サマリ
-        movement = conn.execute("""
-            SELECT
-                type,
-                COUNT(*) AS ops,
-                SUM(quantity) AS qty
+        cur.execute("""
+            SELECT type, COUNT(*) AS ops, SUM(quantity) AS qty
             FROM stock_logs
-            WHERE logged_at >= datetime('now','-30 days')
+            WHERE logged_at::timestamp >= NOW() - INTERVAL '30 days'
             GROUP BY type
-        """).fetchall()
+        """)
+        movement = cur.fetchall()
 
-        # よく売れた商品 TOP20（全期間の出庫合計）
-        top_sellers = conn.execute("""
+        cur.execute("""
             SELECT
                 p.id, p.name, p.category, p.unit, p.stock,
                 SUM(l.quantity)  AS total_out,
@@ -409,25 +443,33 @@ def get_report_data():
             FROM stock_logs l
             JOIN products p ON l.product_id = p.id
             WHERE l.type = 'out'
-            GROUP BY l.product_id
+            GROUP BY p.id, p.name, p.category, p.unit, p.stock
             ORDER BY total_out DESC
             LIMIT 20
-        """).fetchall()
+        """)
+        top_sellers = cur.fetchall()
 
-        # 不良在庫：在庫あり & 90日以上出庫なし（または一度も出庫なし）
-        dead_stock = conn.execute("""
+        cur.execute("""
             SELECT
                 p.id, p.name, p.category, p.unit, p.stock,
                 p.cost_price, p.sell_price,
                 MAX(l.logged_at) AS last_out_at,
-                CAST(julianday('now') - julianday(COALESCE(MAX(l.logged_at), p.created_at)) AS INTEGER) AS days_since
+                EXTRACT(epoch FROM (
+                    NOW() - COALESCE(MAX(l.logged_at), p.created_at)::timestamp
+                ))::integer / 86400 AS days_since
             FROM products p
             LEFT JOIN stock_logs l ON l.product_id = p.id AND l.type = 'out'
             WHERE p.stock > 0
-            GROUP BY p.id
-            HAVING days_since >= 90 OR last_out_at IS NULL
-            ORDER BY days_since DESC, p.stock DESC
-        """).fetchall()
+            GROUP BY p.id, p.name, p.category, p.unit, p.stock,
+                     p.cost_price, p.sell_price, p.created_at
+            HAVING
+                EXTRACT(epoch FROM (
+                    NOW() - COALESCE(MAX(l.logged_at), p.created_at)::timestamp
+                ))::integer / 86400 >= 90
+                OR MAX(l.logged_at) IS NULL
+            ORDER BY days_since DESC NULLS LAST, p.stock DESC
+        """)
+        dead_stock = cur.fetchall()
 
     categories  = [dict(r) for r in cat_rows]
     products    = [dict(r) for r in all_prods]
@@ -435,11 +477,9 @@ def get_report_data():
     top_sellers = [dict(r) for r in top_sellers]
     dead_stock  = [dict(r) for r in dead_stock]
 
-    total_cost = sum(c["total_cost"] or 0 for c in categories)
-    total_sell = sum(c["total_sell"] or 0 for c in categories)
-
-    # TOP売上の最大値（棒グラフ幅計算用）
-    max_out = top_sellers[0]["total_out"] if top_sellers else 1
+    total_cost = sum(float(c["total_cost"] or 0) for c in categories)
+    total_sell = sum(float(c["total_sell"] or 0) for c in categories)
+    max_out    = top_sellers[0]["total_out"] if top_sellers else 1
 
     return {
         "categories": categories,
@@ -458,17 +498,25 @@ def get_report_data():
 
 def get_summary():
     with get_conn() as conn:
-        total = conn.execute("SELECT COUNT(*) FROM products").fetchone()[0]
-        alert = conn.execute(
-            "SELECT COUNT(*) FROM products WHERE alert_level>0 AND stock<=alert_level"
-        ).fetchone()[0]
-        zero = conn.execute("SELECT COUNT(*) FROM products WHERE stock=0").fetchone()[0]
-        today_in = conn.execute(
-            "SELECT COALESCE(SUM(quantity),0) FROM stock_logs WHERE type='in' AND date(logged_at)=date('now')"
-        ).fetchone()[0]
-        today_out = conn.execute(
-            "SELECT COALESCE(SUM(quantity),0) FROM stock_logs WHERE type='out' AND date(logged_at)=date('now')"
-        ).fetchone()[0]
+        cur = _cur(conn)
+        cur.execute("SELECT COUNT(*) AS cnt FROM products")
+        total = cur.fetchone()["cnt"]
+        cur.execute(
+            "SELECT COUNT(*) AS cnt FROM products WHERE alert_level>0 AND stock<=alert_level"
+        )
+        alert = cur.fetchone()["cnt"]
+        cur.execute("SELECT COUNT(*) AS cnt FROM products WHERE stock=0")
+        zero = cur.fetchone()["cnt"]
+        cur.execute(
+            "SELECT COALESCE(SUM(quantity),0) AS s FROM stock_logs "
+            "WHERE type='in' AND logged_at::date = CURRENT_DATE"
+        )
+        today_in = cur.fetchone()["s"]
+        cur.execute(
+            "SELECT COALESCE(SUM(quantity),0) AS s FROM stock_logs "
+            "WHERE type='out' AND logged_at::date = CURRENT_DATE"
+        )
+        today_out = cur.fetchone()["s"]
     return {
         "total_products": total,
         "alert_count": alert,
