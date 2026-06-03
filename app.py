@@ -16,6 +16,7 @@ from core.database import (
     get_logs, get_categories, add_category, delete_category,
     get_summary, get_report_data,
     import_imaiya_entries, get_synced_imaiya_ids,
+    restore_from_backup,
 )
 from export.csv_export import export_products_csv, export_logs_csv
 from export.excel_export import export_products_excel, export_logs_excel
@@ -359,6 +360,33 @@ def import_json():
         return redirect(url_for("products"))
 
     return render_template("import.html")
+
+
+@app.route("/restore", methods=["GET", "POST"])
+def restore():
+    if request.method == "POST":
+        f = request.files.get("file")
+        if not f:
+            flash("ファイルを選択してください", "danger")
+            return redirect(url_for("restore"))
+        try:
+            data = json.load(f)
+        except Exception:
+            flash("JSONの読み込みに失敗しました", "danger")
+            return redirect(url_for("restore"))
+
+        if data.get("version") != 2:
+            flash("対応していない形式です（version 2 のみ対応）", "danger")
+            return redirect(url_for("restore"))
+
+        try:
+            p_cnt, l_cnt, c_cnt = restore_from_backup(data)
+            flash(f"✅ 完全復元完了：商品 {p_cnt} 件 ／ 入出庫ログ {l_cnt} 件 ／ カテゴリ {c_cnt} 件", "success")
+        except Exception as e:
+            flash(f"復元エラー: {e}", "danger")
+        return redirect(url_for("products"))
+
+    return render_template("restore.html")
 
 
 # ─────────────────────────── Report ──────────────────────────────

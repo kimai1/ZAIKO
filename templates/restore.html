@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}完全復元{% endblock %}
+
+{% block content %}
+<div class="page-title"><i class="bi bi-arrow-counterclockwise me-2"></i>完全復元</div>
+
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="card border-danger">
+      <div class="card-header bg-danger text-white">
+        <i class="bi bi-exclamation-triangle me-1"></i>バックアップJSONから完全復元
+      </div>
+      <div class="card-body">
+        <div class="alert alert-warning">
+          <strong>注意：</strong>現在の全データ（商品・在庫数・入出庫ログ・カテゴリ）が
+          <strong>完全に上書き</strong>されます。この操作は元に戻せません。
+        </div>
+        <p class="text-muted small mb-3">
+          対応形式：<code>zaiko_backup_*.json</code>（version 2）<br>
+          商品マスタ・在庫数・入出庫履歴・カテゴリをすべて復元します。
+        </p>
+        <form method="post" enctype="multipart/form-data"
+              onsubmit="return confirm('現在のデータが全て上書きされます。本当に復元しますか？')">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">バックアップJSONファイル</label>
+            <input type="file" name="file" class="form-control" accept=".json" required>
+          </div>
+          <button type="submit" class="btn btn-danger">
+            <i class="bi bi-arrow-counterclockwise me-1"></i>完全復元を実行
+          </button>
+          <a href="{{ url_for('products') }}" class="btn btn-outline-secondary ms-2">キャンセル</a>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header"><i class="bi bi-info-circle me-1"></i>完全復元について</div>
+      <div class="card-body small text-muted">
+        <ul class="mb-0 ps-3">
+          <li>復元されるのは <strong>商品マスタ・在庫数・入出庫ログ・カテゴリ</strong> です</li>
+          <li>現在のデータはすべて削除されてから復元されます</li>
+          <li>バックアップファイルは毎朝自動でiCloudに保存されます</li>
+          <li>商品マスタのみインポートしたい場合は
+            <a href="{{ url_for('import_json') }}">インポート</a> を使ってください</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card mt-3">
+      <div class="card-header"><i class="bi bi-download me-1"></i>バックアップのダウンロード</div>
+      <div class="card-body">
+        <p class="text-muted small mb-2">現在のデータをバックアップとして保存：</p>
+        <a href="{{ url_for('api_backup') }}" class="btn btn-outline-primary btn-sm">
+          <i class="bi bi-cloud-download me-1"></i>JSONをダウンロード
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

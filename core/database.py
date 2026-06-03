@@ -309,6 +309,61 @@ def import_imaiya_entries(entries, products_map):
     return ok, skip, err, messages
 
 
+# ---------- restore ----------
+
+def restore_from_backup(data):
+    products   = data.get("products", [])
+    logs       = data.get("logs", [])   # /api/backup 形式のみ（旧HTMLのentries は別構造のため非対応）
+    categories = data.get("categories", [])
+
+    with get_conn() as conn:
+        conn.execute("DELETE FROM stock_logs")
+        conn.execute("DELETE FROM products")
+        conn.execute("DELETE FROM categories")
+        conn.executescript("""
+            DELETE FROM sqlite_sequence WHERE name='products';
+            DELETE FROM sqlite_sequence WHERE name='stock_logs';
+            DELETE FROM sqlite_sequence WHERE name='categories';
+        """)
+
+        for cat in categories:
+            conn.execute("INSERT OR IGNORE INTO categories(name) VALUES(?)", (cat,))
+
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        for p in products:
+            conn.execute("""
+                INSERT INTO products
+                  (id,code,name,category,unit,stock,alert_level,
+                   cost_price,sell_price,memo,created_at,updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                p.get("id"), p.get("code",""), p.get("name",""),
+                p.get("category",""), p.get("unit","個"),
+                int(p.get("stock",0)), int(p.get("alert_level",0)),
+                float(p.get("cost_price",0)), float(p.get("sell_price",0)),
+                p.get("memo",""),
+                p.get("created_at", now), p.get("updated_at", now),
+            ))
+
+        for log in logs:
+            conn.execute("""
+                INSERT INTO stock_logs
+                  (id,product_id,type,quantity,before_stock,after_stock,
+                   reason,operator,logged_at)
+                VALUES (?,?,?,?,?,?,?,?,?)
+            """, (
+                log.get("id"), log.get("product_id"),
+                log.get("type","adjust"),
+                int(log.get("quantity",0)),
+                int(log.get("before_stock",0)),
+                int(log.get("after_stock",0)),
+                log.get("reason",""), log.get("operator",""),
+                log.get("logged_at", now),
+            ))
+
+    return len(products), len(logs), len(categories)
+
+
 # ---------- report ----------
 
 def get_report_data():

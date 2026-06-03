@@ -19,6 +19,9 @@
 <a href="{{ url_for('stock_adjust_view') }}" class="nav-link {% if request.endpoint=='stock_adjust_view' %}active{% endif %}">
   <i class="bi bi-clipboard-check"></i> 棚卸調整
 </a>
+<a href="{{ url_for('categories') }}" class="nav-link {% if request.endpoint=='categories' %}active{% endif %}">
+  <i class="bi bi-tags"></i> カテゴリ管理
+</a>
 
 <div class="nav-section">管理</div>
 <a href="{{ url_for('history') }}" class="nav-link {% if request.endpoint=='history' %}active{% endif %}">
@@ -27,11 +30,11 @@
 <a href="{{ url_for('report') }}" class="nav-link {% if request.endpoint=='report' %}active{% endif %}">
   <i class="bi bi-bar-chart-line"></i> レポート
 </a>
-<a href="{{ url_for('categories') }}" class="nav-link {% if request.endpoint=='categories' %}active{% endif %}">
-  <i class="bi bi-tags"></i> カテゴリ
-</a>
 <a href="{{ url_for('import_json') }}" class="nav-link {% if request.endpoint=='import_json' %}active{% endif %}">
   <i class="bi bi-upload"></i> インポート
+</a>
+<a href="{{ url_for('restore') }}" class="nav-link {% if request.endpoint=='restore' %}active{% endif %}">
+  <i class="bi bi-arrow-counterclockwise"></i> 完全復元
 </a>
 <a href="{{ url_for('sync_imaiya') }}" class="nav-link {% if request.endpoint=='sync_imaiya' %}active{% endif %}">
   <i class="bi bi-arrow-left-right"></i> 今井屋同期
