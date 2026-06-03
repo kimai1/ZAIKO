@@ -24,10 +24,13 @@ from export.pdf_export import export_report_pdf
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "zaiko-secret-2024-local")
 
-
-@app.before_request
-def setup():
+# 起動時に1回だけDB初期化（before_requestではなく起動時）
+with app.app_context():
     init_db()
+
+@app.route("/health")
+def health():
+    return "ok", 200
 
 
 # ─────────────────────────── Dashboard ───────────────────────────
