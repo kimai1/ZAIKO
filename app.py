@@ -25,9 +25,13 @@ from export.pdf_export import export_report_pdf
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "zaiko-secret-2024-local")
 
-# 起動時に1回だけDB初期化（before_requestではなく起動時）
+# 起動時にDB初期化（失敗してもクラッシュさせずログに残す）
 with app.app_context():
-    init_db()
+    try:
+        init_db()
+        print("[ZAIKO] DB初期化完了")
+    except Exception as e:
+        print(f"[ZAIKO] DB初期化失敗（DATABASE_URL確認が必要）: {e}")
 
 @app.route("/health")
 def health():

@@ -19,6 +19,10 @@ def _get_pool():
         # Render/Heroku は postgres:// を使う場合がある
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql://", 1)
+        # Supabase は SSL 必須（未指定なら付与）
+        if "sslmode" not in url:
+            sep = "&" if "?" in url else "?"
+            url = url + sep + "sslmode=require"
         _pool = psycopg2.pool.ThreadedConnectionPool(1, 5, dsn=url)
     return _pool
 
