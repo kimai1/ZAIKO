@@ -264,6 +264,27 @@ def export_logs_excel_view():
 
 # ─────────────────────────── API (JSON) ──────────────────────────
 
+@app.route("/api/backup")
+def api_backup():
+    from datetime import datetime as dt
+    products = get_all_products()
+    logs = get_logs(limit=100000)
+    categories = get_categories()
+    data = {
+        "version": 2,
+        "exportedAt": dt.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        "company": "株式会社　今井屋",
+        "products": products,
+        "logs": logs,
+        "categories": categories,
+    }
+    return app.response_class(
+        response=json.dumps(data, ensure_ascii=False, indent=2),
+        mimetype="application/json",
+        headers={"Content-Disposition": f"attachment; filename=zaiko_backup_{dt.utcnow().strftime('%Y-%m-%d')}.json"},
+    )
+
+
 @app.route("/api/product/search")
 def api_product_search():
     code = request.args.get("code", "")
