@@ -41,6 +41,9 @@ def index():
     summary = get_summary()
     alerts = get_all_products(alert_only=True)
     recent_logs = get_logs(limit=10)
+    # 商品が0件 = DB初期化済み（Render再起動後など）
+    if summary["total_products"] == 0:
+        flash("⚠️ 商品データがありません。バックアップから復元してください。", "warning")
     return render_template("index.html", summary=summary, alerts=alerts,
                            recent_logs=recent_logs)
 
