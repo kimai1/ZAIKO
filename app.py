@@ -34,6 +34,29 @@ def health():
     return "ok", 200
 
 
+@app.route("/debug/db")
+def debug_db():
+    import os
+    from core.database import get_conn, _cur, DATABASE_URL
+    result = {"DATABASE_URL": DATABASE_URL[:40] + "..." if DATABASE_URL else "未設定"}
+    try:
+        with get_conn() as conn:
+            cur = _cur(conn)
+            cur.execute("SELECT COUNT(*) AS cnt FROM products")
+            result["products"] = cur.fetchone()["cnt"]
+            cur.execute("SELECT COUNT(*) AS cnt FROM categories")
+            result["categories"] = cur.fetchone()["cnt"]
+            cur.execute("SELECT current_database(), version()")
+            row = cur.fetchone()
+            result["db_name"] = row[0]
+            result["pg_version"] = row[1][:40]
+        result["status"] = "ok"
+    except Exception as e:
+        result["status"] = "error"
+        result["error"] = str(e)
+    return jsonify(result)
+
+
 # ─────────────────────────── Dashboard ───────────────────────────
 
 @app.route("/")
