@@ -197,8 +197,8 @@
   <a href="{{ url_for('index') }}" class="{% if request.endpoint=='index' %}active{% endif %}">
     <i class="bi bi-speedometer2"></i><span>ホーム</span>
   </a>
-  <a href="{{ url_for('receive') }}" class="{% if request.endpoint=='receive' %}active{% endif %}">
-    <i class="bi bi-shop"></i><span>入荷</span>
+  <a href="{{ url_for('stock_in_view') }}" class="{% if request.endpoint=='stock_in_view' %}active{% endif %}">
+    <i class="bi bi-box-arrow-in-down"></i><span>入庫</span>
   </a>
   <a href="{{ url_for('stock_out_view') }}" class="{% if request.endpoint=='stock_out_view' %}active{% endif %}">
     <i class="bi bi-box-arrow-up"></i><span>出庫</span>
