@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}仕入れ先管理{% endblock %}
+
+{% block content %}
+<div class="page-title"><i class="bi bi-truck me-2"></i>仕入れ先管理</div>
+
+<div class="row g-4">
+  {# ── 追加フォーム ── #}
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-header">新規追加</div>
+      <div class="card-body">
+        <form method="post">
+          <input type="hidden" name="action" value="add">
+          <div class="mb-2">
+            <label class="form-label fw-semibold">仕入れ先名 <span class="text-danger">*</span></label>
+            <input type="text" name="name" class="form-control" required placeholder="例：○○商事">
+          </div>
+          <div class="mb-2">
+            <label class="form-label">担当者名</label>
+            <input type="text" name="contact" class="form-control" placeholder="山田 太郎">
+          </div>
+          <div class="mb-2">
+            <label class="form-label">電話番号</label>
+            <input type="tel" name="phone" class="form-control" placeholder="03-0000-0000">
+          </div>
+          <div class="mb-2">
+            <label class="form-label">メールアドレス</label>
+            <input type="email" name="email" class="form-control" placeholder="info@example.com">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">メモ</label>
+            <textarea name="memo" class="form-control" rows="2"></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary w-100">
+            <i class="bi bi-plus-lg me-1"></i>追加
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {# ── 一覧 ── #}
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header">仕入れ先一覧（{{ suppliers|length }} 件）</div>
+      <div class="card-body p-0">
+        {% if suppliers %}
+        <div class="table-responsive-wrap">
+          <table class="table table-sm table-hover mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>仕入れ先名</th>
+                <th>担当者</th>
+                <th>電話番号</th>
+                <th>メール</th>
+                <th>メモ</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for s in suppliers %}
+              <tr>
+                <td class="fw-semibold">{{ s.name }}</td>
+                <td class="text-muted small">{{ s.contact or '—' }}</td>
+                <td class="small">
+                  {% if s.phone %}
+                  <a href="tel:{{ s.phone }}">{{ s.phone }}</a>
+                  {% else %}—{% endif %}
+                </td>
+                <td class="small">
+                  {% if s.email %}
+                  <a href="mailto:{{ s.email }}">{{ s.email }}</a>
+                  {% else %}—{% endif %}
+                </td>
+                <td class="text-muted small">{{ s.memo or '' }}</td>
+                <td class="text-end" style="white-space:nowrap">
+                  <a href="{{ url_for('supplier_edit', sid=s.id) }}"
+                     class="btn btn-sm btn-outline-primary btn-xs py-0 px-2">
+                    <i class="bi bi-pencil"></i>
+                  </a>
+                  <form method="post" class="d-inline"
+                        onsubmit="return confirm('「{{ s.name }}」を削除しますか？')">
+                    <input type="hidden" name="action" value="delete">
+                    <input type="hidden" name="supplier_id" value="{{ s.id }}">
+                    <button class="btn btn-sm btn-outline-danger btn-xs py-0 px-2">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-muted text-center py-5">
+          <i class="bi bi-truck fs-2 d-block mb-2"></i>
+          仕入れ先がまだ登録されていません
+        </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

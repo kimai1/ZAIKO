@@ -17,6 +17,7 @@ from core.database import (
     get_summary, get_report_data,
     import_imaiya_entries, get_synced_imaiya_ids,
     restore_from_backup,
+    get_suppliers, get_supplier, add_supplier, update_supplier, delete_supplier,
 )
 from export.csv_export import export_products_csv, export_logs_csv
 from export.excel_export import export_products_excel, export_logs_excel
@@ -159,6 +160,7 @@ def product_delete(pid):
 def stock_in_view():
     categories = get_categories()
     products = get_all_products()
+    suppliers = get_suppliers()
     if request.method == "POST":
         f = request.form
         try:
@@ -166,15 +168,25 @@ def stock_in_view():
             qty = int(f["quantity"])
             if qty <= 0:
                 raise ValueError("数量は1以上を入力してください")
-            after = stock_in(pid, qty, reason=f.get("reason", ""),
-                             operator=f.get("operator", ""))
+            sid = f.get("supplier_id")
+            supplier_id = int(sid) if sid else None
+            # 仕入れ先名をreasonに自動付与
+            reason = f.get("reason", "")
+            if supplier_id and not reason:
+                s = get_supplier(supplier_id)
+                if s:
+                    reason = s["name"] + "より入庫"
+            after = stock_in(pid, qty, reason=reason,
+                             operator=f.get("operator", ""),
+                             supplier_id=supplier_id)
             p = get_product(pid)
             flash(f"入庫完了：{p['name']} → 在庫 {after}{p['unit']}", "success")
             return redirect(url_for("stock_in_view"))
         except Exception as e:
             flash(f"エラー: {e}", "danger")
     return render_template("stock_move.html", move_type="in",
-                           products=products, categories=categories)
+                           products=products, categories=categories,
+                           suppliers=suppliers)
 
 
 @app.route("/stock/out", methods=["GET", "POST"])
@@ -485,6 +497,54 @@ def sync_imaiya():
 
     # 出庫件数プレビュー用
     return render_template("sync_imaiya.html", products=products)
+
+
+# ─────────────────────────── 仕入れ先管理 ────────────────────────
+
+@app.route("/suppliers", methods=["GET", "POST"])
+def suppliers_view():
+    if request.method == "POST":
+        action = request.form.get("action")
+        if action == "add":
+            name = request.form.get("name", "").strip()
+            if not name:
+                flash("仕入れ先名を入力してください", "danger")
+            else:
+                add_supplier(
+                    name=name,
+                    contact=request.form.get("contact", "").strip(),
+                    phone=request.form.get("phone", "").strip(),
+                    email=request.form.get("email", "").strip(),
+                    memo=request.form.get("memo", "").strip(),
+                )
+                flash(f"「{name}」を追加しました", "success")
+        elif action == "delete":
+            sid = request.form.get("supplier_id")
+            if sid:
+                s = get_supplier(int(sid))
+                delete_supplier(int(sid))
+                flash(f"「{s['name'] if s else sid}」を削除しました", "success")
+        return redirect(url_for("suppliers_view"))
+    return render_template("suppliers.html", suppliers=get_suppliers())
+
+
+@app.route("/suppliers/<int:sid>/edit", methods=["GET", "POST"])
+def supplier_edit(sid):
+    s = get_supplier(sid)
+    if not s:
+        flash("仕入れ先が見つかりません", "danger")
+        return redirect(url_for("suppliers_view"))
+    if request.method == "POST":
+        update_supplier(sid,
+            name=request.form.get("name", "").strip(),
+            contact=request.form.get("contact", "").strip(),
+            phone=request.form.get("phone", "").strip(),
+            email=request.form.get("email", "").strip(),
+            memo=request.form.get("memo", "").strip(),
+        )
+        flash("仕入れ先情報を更新しました", "success")
+        return redirect(url_for("suppliers_view"))
+    return render_template("supplier_edit.html", supplier=s)
 
 
 # ─────────────────────────── 一括入庫（今井屋受け取り）─────────────

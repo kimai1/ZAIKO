@@ -57,16 +57,36 @@
                    min="0" required placeholder="0">
           </div>
 
-          {# ⑤ 理由・担当者 #}
+          {# ⑤ 仕入れ先（入庫時のみ） #}
+          {% if move_type == 'in' and suppliers %}
+          <div class="mb-3">
+            <label class="form-label fw-semibold">
+              <i class="bi bi-truck me-1"></i>仕入れ先
+            </label>
+            <select name="supplier_id" class="form-select">
+              <option value="">── 選択してください（任意）──</option>
+              {% for s in suppliers %}
+              <option value="{{ s.id }}">{{ s.name }}{% if s.contact %} — {{ s.contact }}{% endif %}</option>
+              {% endfor %}
+            </select>
+            <div class="form-text">
+              <a href="{{ url_for('suppliers_view') }}" target="_blank">
+                <i class="bi bi-plus-circle me-1"></i>仕入れ先を追加
+              </a>
+            </div>
+          </div>
+          {% endif %}
+
+          {# ⑥ 理由・担当者 #}
           <div class="row g-2 mb-4">
             <div class="col">
               <label class="form-label fw-semibold">
-                {% if move_type == 'in' %}仕入先・理由
+                {% if move_type == 'in' %}理由・備考
                 {% elif move_type == 'out' %}出庫先・理由
                 {% else %}棚卸理由{% endif %}
               </label>
               <input type="text" name="reason" class="form-control"
-                     placeholder="{% if move_type == 'adjust' %}棚卸{% endif %}">
+                     placeholder="{% if move_type == 'in' %}空欄の場合は仕入れ先名が自動入力されます{% elif move_type == 'adjust' %}棚卸{% endif %}">
             </div>
             <div class="col-auto" style="min-width:110px">
               <label class="form-label fw-semibold">担当者</label>

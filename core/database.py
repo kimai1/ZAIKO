@@ -90,6 +90,30 @@ def init_db():
                 log_id          INTEGER
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS suppliers (
+                id         SERIAL PRIMARY KEY,
+                name       TEXT NOT NULL,
+                contact    TEXT DEFAULT '',
+                phone      TEXT DEFAULT '',
+                email      TEXT DEFAULT '',
+                memo       TEXT DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+        # stock_logs に supplier_id カラムを追加（既存DB対応）
+        cur.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='stock_logs' AND column_name='supplier_id'
+                ) THEN
+                    ALTER TABLE stock_logs ADD COLUMN supplier_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL;
+                END IF;
+            END $$;
+        """)
 
 
 # ---------- helpers ----------
@@ -165,7 +189,7 @@ def delete_product(product_id):
 
 # ---------- stock movement ----------
 
-def _apply_movement(conn, product_id, move_type, quantity, reason, operator):
+def _apply_movement(conn, product_id, move_type, quantity, reason, operator, supplier_id=None):
     cur = _cur(conn)
     cur.execute("SELECT stock FROM products WHERE id=%s FOR UPDATE", (product_id,))
     row = cur.fetchone()
@@ -186,18 +210,18 @@ def _apply_movement(conn, product_id, move_type, quantity, reason, operator):
     )
     cur.execute(
         """INSERT INTO stock_logs
-           (product_id,type,quantity,before_stock,after_stock,reason,operator,logged_at)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+           (product_id,type,quantity,before_stock,after_stock,reason,operator,logged_at,supplier_id)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
         (product_id, move_type,
          abs(quantity if move_type != "adjust" else after - before),
-         before, after, reason, operator, _now())
+         before, after, reason, operator, _now(), supplier_id)
     )
     return after
 
 
-def stock_in(product_id, quantity, reason="", operator=""):
+def stock_in(product_id, quantity, reason="", operator="", supplier_id=None):
     with get_conn() as conn:
-        return _apply_movement(conn, product_id, "in", quantity, reason, operator)
+        return _apply_movement(conn, product_id, "in", quantity, reason, operator, supplier_id=supplier_id)
 
 
 def stock_out(product_id, quantity, reason="", operator=""):
@@ -259,6 +283,50 @@ def delete_category(name):
     with get_conn() as conn:
         cur = _cur(conn)
         cur.execute("DELETE FROM categories WHERE name=%s", (name,))
+
+
+# ---------- suppliers ----------
+
+def get_suppliers():
+    with get_conn() as conn:
+        cur = _cur(conn)
+        cur.execute("SELECT * FROM suppliers ORDER BY name")
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_supplier(supplier_id):
+    with get_conn() as conn:
+        cur = _cur(conn)
+        cur.execute("SELECT * FROM suppliers WHERE id=%s", (supplier_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def add_supplier(name, contact="", phone="", email="", memo=""):
+    now = _now()
+    with get_conn() as conn:
+        cur = _cur(conn)
+        cur.execute(
+            """INSERT INTO suppliers(name,contact,phone,email,memo,created_at,updated_at)
+               VALUES(%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+            (name, contact, phone, email, memo, now, now)
+        )
+        return cur.fetchone()["id"]
+
+
+def update_supplier(supplier_id, **fields):
+    fields["updated_at"] = _now()
+    cols = ", ".join(f"{k}=%s" for k in fields)
+    vals = list(fields.values()) + [supplier_id]
+    with get_conn() as conn:
+        cur = _cur(conn)
+        cur.execute(f"UPDATE suppliers SET {cols} WHERE id=%s", vals)
+
+
+def delete_supplier(supplier_id):
+    with get_conn() as conn:
+        cur = _cur(conn)
+        cur.execute("DELETE FROM suppliers WHERE id=%s", (supplier_id,))
 
 
 # ---------- imaiya sync ----------

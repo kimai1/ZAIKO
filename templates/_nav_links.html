@@ -24,6 +24,9 @@
 </a>
 
 <div class="nav-section">管理</div>
+<a href="{{ url_for('suppliers_view') }}" class="nav-link {% if 'supplier' in (request.endpoint or '') %}active{% endif %}">
+  <i class="bi bi-truck"></i> 仕入れ先管理
+</a>
 <a href="{{ url_for('history') }}" class="nav-link {% if request.endpoint=='history' %}active{% endif %}">
   <i class="bi bi-clock-history"></i> 入出庫履歴
 </a>

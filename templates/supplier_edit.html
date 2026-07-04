@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}仕入れ先編集{% endblock %}
+
+{% block content %}
+<div class="page-title"><i class="bi bi-pencil me-2"></i>仕入れ先編集</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header">{{ supplier.name }}</div>
+      <div class="card-body">
+        <form method="post">
+          <div class="mb-2">
+            <label class="form-label fw-semibold">仕入れ先名 <span class="text-danger">*</span></label>
+            <input type="text" name="name" class="form-control" required value="{{ supplier.name }}">
+          </div>
+          <div class="mb-2">
+            <label class="form-label">担当者名</label>
+            <input type="text" name="contact" class="form-control" value="{{ supplier.contact or '' }}">
+          </div>
+          <div class="mb-2">
+            <label class="form-label">電話番号</label>
+            <input type="tel" name="phone" class="form-control" value="{{ supplier.phone or '' }}">
+          </div>
+          <div class="mb-2">
+            <label class="form-label">メールアドレス</label>
+            <input type="email" name="email" class="form-control" value="{{ supplier.email or '' }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">メモ</label>
+            <textarea name="memo" class="form-control" rows="3">{{ supplier.memo or '' }}</textarea>
+          </div>
+          <div class="d-flex gap-2">
+            <a href="{{ url_for('suppliers_view') }}" class="btn btn-outline-secondary flex-fill">
+              キャンセル
+            </a>
+            <button type="submit" class="btn btn-primary flex-fill">
+              <i class="bi bi-check-lg me-1"></i>保存
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
