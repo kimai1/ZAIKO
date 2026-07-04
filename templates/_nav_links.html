@@ -7,11 +7,11 @@
 </a>
 
 <div class="nav-section">在庫操作</div>
-<a href="{{ url_for('receive') }}" class="nav-link {% if request.endpoint=='receive' %}active{% endif %}">
-  <i class="bi bi-shop"></i> 今井屋から入荷
-</a>
 <a href="{{ url_for('stock_in_view') }}" class="nav-link {% if request.endpoint=='stock_in_view' %}active{% endif %}">
   <i class="bi bi-box-arrow-in-down"></i> 入庫
+</a>
+<a href="{{ url_for('receive') }}" class="nav-link {% if request.endpoint=='receive' %}active{% endif %}">
+  <i class="bi bi-shop"></i> 今井屋から入荷
 </a>
 <a href="{{ url_for('stock_out_view') }}" class="nav-link {% if request.endpoint=='stock_out_view' %}active{% endif %}">
   <i class="bi bi-box-arrow-up"></i> 出庫
