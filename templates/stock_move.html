@@ -76,7 +76,22 @@
           </div>
           {% endif %}
 
-          {# ⑥ 理由・担当者 #}
+          {# ⑥ 単価 #}
+          {% if move_type in ('in', 'out') %}
+          <div class="mb-3">
+            <label class="form-label fw-semibold">
+              {% if move_type == 'in' %}仕入単価{% else %}売単価{% endif %}
+              <small class="text-muted fw-normal">（任意）</small>
+            </label>
+            <div class="input-group">
+              <span class="input-group-text">¥</span>
+              <input type="number" name="unit_price" class="form-control"
+                     min="0" step="1" placeholder="0">
+            </div>
+          </div>
+          {% endif %}
+
+          {# ⑦ 理由・担当者 #}
           <div class="row g-2 mb-4">
             <div class="col">
               <label class="form-label fw-semibold">

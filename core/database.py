@@ -114,6 +114,18 @@ def init_db():
                 END IF;
             END $$;
         """)
+        # stock_logs に unit_price カラムを追加（既存DB対応）
+        cur.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='stock_logs' AND column_name='unit_price'
+                ) THEN
+                    ALTER TABLE stock_logs ADD COLUMN unit_price REAL;
+                END IF;
+            END $$;
+        """)
 
 
 # ---------- helpers ----------
@@ -189,7 +201,7 @@ def delete_product(product_id):
 
 # ---------- stock movement ----------
 
-def _apply_movement(conn, product_id, move_type, quantity, reason, operator, supplier_id=None):
+def _apply_movement(conn, product_id, move_type, quantity, reason, operator, supplier_id=None, unit_price=None):
     cur = _cur(conn)
     cur.execute("SELECT stock FROM products WHERE id=%s FOR UPDATE", (product_id,))
     row = cur.fetchone()
@@ -210,23 +222,25 @@ def _apply_movement(conn, product_id, move_type, quantity, reason, operator, sup
     )
     cur.execute(
         """INSERT INTO stock_logs
-           (product_id,type,quantity,before_stock,after_stock,reason,operator,logged_at,supplier_id)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+           (product_id,type,quantity,before_stock,after_stock,reason,operator,logged_at,supplier_id,unit_price)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
         (product_id, move_type,
          abs(quantity if move_type != "adjust" else after - before),
-         before, after, reason, operator, _now(), supplier_id)
+         before, after, reason, operator, _now(), supplier_id, unit_price)
     )
     return after
 
 
-def stock_in(product_id, quantity, reason="", operator="", supplier_id=None):
+def stock_in(product_id, quantity, reason="", operator="", supplier_id=None, unit_price=None):
     with get_conn() as conn:
-        return _apply_movement(conn, product_id, "in", quantity, reason, operator, supplier_id=supplier_id)
+        return _apply_movement(conn, product_id, "in", quantity, reason, operator, supplier_id=supplier_id, unit_price=unit_price)
 
 
-def stock_out(product_id, quantity, reason="", operator=""):
+def stock_out(product_id, quantity, reason="", operator="", unit_price=None):
     with get_conn() as conn:
-        return _apply_movement(conn, product_id, "out", quantity, reason, operator)
+        return _apply_movement(conn, product_id, "out", quantity, reason, operator, unit_price=unit_price)
+
+
 
 
 def stock_adjust(product_id, new_quantity, reason="棚卸", operator=""):

@@ -170,6 +170,7 @@ def stock_in_view():
                 raise ValueError("数量は1以上を入力してください")
             sid = f.get("supplier_id")
             supplier_id = int(sid) if sid else None
+            unit_price = float(f.get("unit_price") or 0) or None
             # 仕入れ先名をreasonに自動付与
             reason = f.get("reason", "")
             if supplier_id and not reason:
@@ -178,7 +179,8 @@ def stock_in_view():
                     reason = s["name"] + "より入庫"
             after = stock_in(pid, qty, reason=reason,
                              operator=f.get("operator", ""),
-                             supplier_id=supplier_id)
+                             supplier_id=supplier_id,
+                             unit_price=unit_price)
             p = get_product(pid)
             flash(f"入庫完了：{p['name']} → 在庫 {after}{p['unit']}", "success")
             return redirect(url_for("stock_in_view"))
@@ -200,8 +202,10 @@ def stock_out_view():
             qty = int(f["quantity"])
             if qty <= 0:
                 raise ValueError("数量は1以上を入力してください")
+            unit_price = float(f.get("unit_price") or 0) or None
             after = stock_out(pid, qty, reason=f.get("reason", ""),
-                              operator=f.get("operator", ""))
+                              operator=f.get("operator", ""),
+                              unit_price=unit_price)
             p = get_product(pid)
             flash(f"出庫完了：{p['name']} → 在庫 {after}{p['unit']}", "success")
             return redirect(url_for("stock_out_view"))
@@ -567,7 +571,9 @@ def receive():
                     pid = int(key[4:])
                     qty = int(val)
                     if qty > 0:
-                        items.append((pid, qty))
+                        price_val = request.form.get(f"price_{pid}", "")
+                        unit_price = float(price_val) if price_val.strip() else None
+                        items.append((pid, qty, unit_price))
                 except ValueError:
                     pass
 
@@ -576,9 +582,9 @@ def receive():
             return render_template("receive.html", products=products, categories=categories)
 
         ok = 0
-        for pid, qty in items:
+        for pid, qty, unit_price in items:
             try:
-                stock_in(pid, qty, reason=reason, operator=operator)
+                stock_in(pid, qty, reason=reason, operator=operator, unit_price=unit_price)
                 ok += 1
             except Exception as e:
                 p = get_product(pid)
