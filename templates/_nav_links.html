@@ -14,7 +14,7 @@
   <i class="bi bi-box-arrow-up"></i> 出庫
 </a>
 <a href="{{ url_for('receive') }}" class="nav-link {% if request.endpoint=='receive' %}active{% endif %}">
-  <i class="bi bi-shop"></i> 今井屋入荷
+  <i class="bi bi-shop"></i> 一括入庫
 </a>
 <a href="{{ url_for('stock_adjust_view') }}" class="nav-link {% if request.endpoint=='stock_adjust_view' %}active{% endif %}">
   <i class="bi bi-clipboard-check"></i> 棚卸調整

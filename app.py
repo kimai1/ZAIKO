@@ -557,14 +557,21 @@ def supplier_edit(sid):
 def receive():
     products = get_all_products()
     categories = get_categories()
+    suppliers = get_suppliers()
 
     if request.method == "POST":
-        operator = request.form.get("operator", "").strip()
-        reason   = request.form.get("reason", "今井屋より入荷").strip()
-        items    = []
-        errors   = []
+        operator   = request.form.get("operator", "").strip()
+        reason     = request.form.get("reason", "一括入庫").strip()
+        sid        = request.form.get("supplier_id", "")
+        supplier_id = int(sid) if sid else None
+        # 仕入れ先名をreasonに自動付与
+        if supplier_id and not reason:
+            s = get_supplier(supplier_id)
+            if s:
+                reason = s["name"] + "より入庫"
+        items  = []
+        errors = []
 
-        # 商品IDと数量のペアを収集
         for key, val in request.form.items():
             if key.startswith("qty_") and val.strip():
                 try:
@@ -579,12 +586,14 @@ def receive():
 
         if not items:
             flash("数量を入力してください", "warning")
-            return render_template("receive.html", products=products, categories=categories)
+            return render_template("receive.html", products=products,
+                                   categories=categories, suppliers=suppliers)
 
         ok = 0
         for pid, qty, unit_price in items:
             try:
-                stock_in(pid, qty, reason=reason, operator=operator, unit_price=unit_price)
+                stock_in(pid, qty, reason=reason, operator=operator,
+                         supplier_id=supplier_id, unit_price=unit_price)
                 ok += 1
             except Exception as e:
                 p = get_product(pid)
@@ -596,7 +605,54 @@ def receive():
             flash("エラー: " + " / ".join(errors), "danger")
         return redirect(url_for("history"))
 
-    return render_template("receive.html", products=products, categories=categories)
+    return render_template("receive.html", products=products,
+                           categories=categories, suppliers=suppliers)
+
+
+@app.route("/api/ocr/invoice", methods=["POST"])
+def ocr_invoice():
+    import anthropic, base64, re
+    f = request.files.get("file")
+    if not f:
+        return jsonify({"error": "ファイルが必要です"}), 400
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        return jsonify({"error": "ANTHROPIC_API_KEY が未設定です"}), 500
+
+    file_bytes = f.read()
+    media_type = f.content_type or "image/jpeg"
+    b64 = base64.standard_b64encode(file_bytes).decode()
+
+    products     = get_all_products()
+    product_names = [p["name"] for p in products]
+
+    prompt = f"""この伝票・納品書の画像から商品名と数量を読み取り、
+以下の商品マスターと照合して一致するものだけをJSONで返してください。
+商品マスター: {json.dumps(product_names, ensure_ascii=False)}
+
+レスポンスはJSON配列のみ（説明不要）:
+[{{"name":"商品名（マスターと完全一致）","qty":数量,"unit_price":単価またはnull}}]
+
+マスターに存在しない商品は除外してください。"""
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model="claude-opus-4-8",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {
+                    "type": "base64", "media_type": media_type, "data": b64}},
+                {"type": "text", "text": prompt}
+            ]}]
+        )
+        text = msg.content[0].text.strip()
+        m = re.search(r'\[.*\]', text, re.DOTALL)
+        items = json.loads(m.group() if m else text)
+        return jsonify({"items": items})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":

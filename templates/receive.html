@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}一括入庫（今井屋受け取り）{% endblock %}
+{% block title %}一括入庫{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -7,32 +7,95 @@
   .prod-row.has-qty { background: #f0fff4; }
   .qty-input   { width: 80px; text-align: center; }
   .price-input { width: 90px; text-align: right; }
-  .cat-header { background: #1a4a7a; color: #fff; font-size:.8rem;
-                padding: 4px 12px; font-weight: 600; }
+  .cat-header  { background: #1a4a7a; color: #fff; font-size:.8rem;
+                 padding: 4px 12px; font-weight: 600; }
+  .ocr-zone { border: 2px dashed #adb5bd; border-radius: 8px;
+              padding: 18px; text-align: center; cursor: pointer;
+              transition: border-color .2s; }
+  .ocr-zone:hover, .ocr-zone.drag-over { border-color: #1a4a7a; background:#f0f5ff; }
+  .ocr-zone img { max-height: 120px; border-radius: 6px; margin-top: 10px; }
+  #ocr-results { font-size:.85rem; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <div class="page-title mb-0"><i class="bi bi-box-arrow-in-down me-2"></i>一括入庫（今井屋受け取り）</div>
+  <div class="page-title mb-0"><i class="bi bi-box-arrow-in-down me-2"></i>一括入庫</div>
   <a href="{{ url_for('sync_imaiya') }}" class="btn btn-outline-secondary btn-sm">
-    <i class="bi bi-arrow-left-right me-1"></i>JSONで自動同期
+    <i class="bi bi-arrow-left-right me-1"></i>今井屋JSON同期
   </a>
 </div>
 
+{# ── 伝票読み込みセクション ── #}
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center"
+       style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#ocr-panel">
+    <span><i class="bi bi-file-earmark-text me-2"></i>伝票より読み込み（OCR / ファイル）</span>
+    <i class="bi bi-chevron-down"></i>
+  </div>
+  <div class="collapse" id="ocr-panel">
+    <div class="card-body">
+      <div class="row g-3">
+
+        {# 画像OCR #}
+        <div class="col-md-6">
+          <div class="fw-semibold small mb-2"><i class="bi bi-camera me-1"></i>伝票画像からOCR</div>
+          <div class="ocr-zone" id="ocr-drop-zone" onclick="document.getElementById('ocr-file').click()">
+            <i class="bi bi-cloud-upload fs-3 text-muted"></i>
+            <div class="text-muted small mt-1">クリックまたはドラッグ＆ドロップ<br>（JPG / PNG / HEIC）</div>
+            <img id="ocr-preview" src="" class="d-none">
+          </div>
+          <input type="file" id="ocr-file" accept="image/*" class="d-none">
+          <button id="ocr-btn" class="btn btn-primary btn-sm w-100 mt-2" disabled>
+            <i class="bi bi-magic me-1"></i>AIで読み取り
+          </button>
+          <div id="ocr-spinner" class="text-center py-2 d-none">
+            <div class="spinner-border spinner-border-sm text-primary me-1"></div>
+            <span class="small">読み取り中...</span>
+          </div>
+          <div id="ocr-results" class="mt-2"></div>
+        </div>
+
+        {# CSVファイル #}
+        <div class="col-md-6">
+          <div class="fw-semibold small mb-2"><i class="bi bi-filetype-csv me-1"></i>CSVファイルから読み込み</div>
+          <div class="text-muted small mb-2">
+            フォーマット：<code>商品名,数量,単価</code>（1行目はヘッダー可）
+          </div>
+          <input type="file" id="csv-file" accept=".csv,text/csv" class="form-control form-control-sm mb-2">
+          <button id="csv-btn" class="btn btn-outline-primary btn-sm w-100" disabled>
+            <i class="bi bi-table me-1"></i>CSVを適用
+          </button>
+          <div id="csv-results" class="mt-2 small"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── 入庫フォーム ── #}
 <form method="post" id="receive-form">
   <div class="card mb-3">
     <div class="card-body py-2">
       <div class="row g-2 align-items-center">
-        <div class="col-auto">
-          <input type="text" name="reason" class="form-control form-control-sm"
-                 value="今井屋より入荷" placeholder="入庫理由">
+        <div class="col-sm-auto">
+          <select name="supplier_id" class="form-select form-select-sm" style="min-width:160px">
+            <option value="">仕入れ先を選択（任意）</option>
+            {% for s in suppliers %}
+            <option value="{{ s.id }}">{{ s.name }}</option>
+            {% endfor %}
+          </select>
         </div>
-        <div class="col-auto">
+        <div class="col-sm-auto">
+          <input type="text" name="reason" class="form-control form-control-sm"
+                 value="一括入庫" placeholder="入庫理由" style="min-width:120px">
+        </div>
+        <div class="col-sm-auto">
           <input type="text" name="operator" class="form-control form-control-sm"
                  placeholder="担当者名">
         </div>
-        <div class="col-auto">
+        <div class="col-sm-auto">
           <input type="text" id="search-box" class="form-control form-control-sm"
                  placeholder="🔍 商品名で絞り込み">
         </div>
@@ -51,7 +114,7 @@
             <th>商品名</th>
             <th style="width:90px">現在庫</th>
             <th style="width:110px" class="text-center">入庫数量</th>
-            <th style="width:100px" class="text-center">仕入単価</th>
+            <th style="width:110px" class="text-center">仕入単価</th>
             <th style="width:80px" class="text-center text-success fw-bold">入庫後</th>
           </tr>
         </thead>
@@ -60,9 +123,7 @@
           {% for p in products | sort(attribute='category') %}
             {% if p.category != ns.prev_cat %}
             <tr class="cat-row" data-cat="{{ p.category or '未分類' }}">
-              <td colspan="5" class="cat-header">
-                {{ p.category or '未分類' }}
-              </td>
+              <td colspan="5" class="cat-header">{{ p.category or '未分類' }}</td>
             </tr>
             {% set ns.prev_cat = p.category %}
             {% endif %}
@@ -82,19 +143,19 @@
                        min="0" placeholder="0"
                        data-unit="{{ p.unit }}"
                        data-stock="{{ p.stock }}"
+                       data-name="{{ p.name }}"
                        data-pid="{{ p.id }}">
               </td>
               <td class="text-center">
                 <div class="input-group input-group-sm">
-                  <span class="input-group-text">¥</span>
+                  <span class="input-group-text px-1">¥</span>
                   <input type="number" name="price_{{ p.id }}"
                          class="form-control price-input"
-                         min="0" step="1" placeholder="—">
+                         min="0" step="1" placeholder="—"
+                         data-pid="{{ p.id }}">
                 </div>
               </td>
-              <td class="text-center fw-bold text-success after-stock" data-stock="{{ p.stock }}">
-                —
-              </td>
+              <td class="text-center fw-bold text-success after-stock" data-stock="{{ p.stock }}">—</td>
             </tr>
           {% endfor %}
         </tbody>
@@ -113,21 +174,21 @@
 
 {% block extra_js %}
 <script>
-  const qtyInputs  = document.querySelectorAll('.qty-input');
-  const countBadge = document.getElementById('count-badge');
-  const submitBtn  = document.getElementById('submit-btn');
+  // ── 商品テーブル制御 ──
+  const qtyInputs   = document.querySelectorAll('.qty-input');
+  const countBadge  = document.getElementById('count-badge');
+  const submitBtn   = document.getElementById('submit-btn');
   const submitCount = document.getElementById('submit-count');
-  const searchBox  = document.getElementById('search-box');
+  const searchBox   = document.getElementById('search-box');
 
   function updateSummary() {
     let count = 0;
     qtyInputs.forEach(inp => {
-      const qty = parseInt(inp.value) || 0;
-      const row = inp.closest('tr');
+      const qty  = parseInt(inp.value) || 0;
+      const row  = inp.closest('tr');
       const afterCell = row.querySelector('.after-stock');
       const stock = parseInt(inp.dataset.stock) || 0;
-      const unit = inp.dataset.unit || '';
-
+      const unit  = inp.dataset.unit || '';
       if (qty > 0) {
         count++;
         row.classList.add('has-qty');
@@ -147,32 +208,127 @@
   // 商品名絞り込み
   searchBox.addEventListener('input', () => {
     const q = searchBox.value.toLowerCase();
-    const rows = document.querySelectorAll('.prod-row');
+    const rows    = document.querySelectorAll('.prod-row');
     const catRows = document.querySelectorAll('.cat-row');
-
-    // カテゴリ行の表示制御
     const visibleCats = new Set();
     rows.forEach(row => {
-      const name = row.dataset.name?.toLowerCase() || '';
-      const show = !q || name.includes(q);
+      const show = !q || (row.dataset.name || '').toLowerCase().includes(q);
       row.style.display = show ? '' : 'none';
       if (show) visibleCats.add(row.dataset.cat);
     });
-
     catRows.forEach(row => {
       row.style.display = visibleCats.has(row.dataset.cat) ? '' : 'none';
     });
   });
 
-  // Enterで次の行に移動
+  // Enterで次の行へ
   qtyInputs.forEach((inp, i) => {
     inp.addEventListener('keydown', e => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        const next = qtyInputs[i + 1];
-        if (next) next.focus();
-      }
+      if (e.key === 'Enter') { e.preventDefault(); qtyInputs[i + 1]?.focus(); }
     });
+  });
+
+  // OCR結果・CSVを適用するヘルパー
+  function applyItems(items) {
+    let matched = 0;
+    items.forEach(item => {
+      const name = (item.name || '').trim();
+      const qty  = parseInt(item.qty) || 0;
+      const price = item.unit_price != null ? item.unit_price : '';
+      if (!name || qty <= 0) return;
+      qtyInputs.forEach(inp => {
+        if (inp.dataset.name === name) {
+          inp.value = qty;
+          if (price !== '') {
+            const priceInp = document.querySelector(`input[name="price_${inp.dataset.pid}"]`);
+            if (priceInp) priceInp.value = price;
+          }
+          inp.dispatchEvent(new Event('input'));
+          matched++;
+        }
+      });
+    });
+    return matched;
+  }
+
+  // ── OCR ──
+  const ocrFile    = document.getElementById('ocr-file');
+  const ocrBtn     = document.getElementById('ocr-btn');
+  const ocrPreview = document.getElementById('ocr-preview');
+  const ocrDrop    = document.getElementById('ocr-drop-zone');
+  const ocrSpinner = document.getElementById('ocr-spinner');
+  const ocrResults = document.getElementById('ocr-results');
+
+  function setOcrFile(file) {
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    ocrPreview.src = url;
+    ocrPreview.classList.remove('d-none');
+    ocrBtn.disabled = false;
+    ocrBtn._file = file;
+  }
+
+  ocrFile.addEventListener('change', () => setOcrFile(ocrFile.files[0]));
+
+  ocrDrop.addEventListener('dragover', e => { e.preventDefault(); ocrDrop.classList.add('drag-over'); });
+  ocrDrop.addEventListener('dragleave', () => ocrDrop.classList.remove('drag-over'));
+  ocrDrop.addEventListener('drop', e => {
+    e.preventDefault(); ocrDrop.classList.remove('drag-over');
+    setOcrFile(e.dataTransfer.files[0]);
+  });
+
+  ocrBtn.addEventListener('click', async () => {
+    const file = ocrBtn._file;
+    if (!file) return;
+    ocrBtn.disabled = true;
+    ocrSpinner.classList.remove('d-none');
+    ocrResults.innerHTML = '';
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res  = await fetch('/api/ocr/invoice', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      const matched = applyItems(data.items || []);
+      ocrResults.innerHTML = `<div class="alert alert-success py-1">`
+        + `<i class="bi bi-check-circle me-1"></i>${data.items.length}件読み取り、`
+        + `${matched}件を自動入力しました</div>`;
+    } catch(e) {
+      ocrResults.innerHTML = `<div class="alert alert-danger py-1">${e.message}</div>`;
+    } finally {
+      ocrSpinner.classList.add('d-none');
+      ocrBtn.disabled = false;
+    }
+  });
+
+  // ── CSV読み込み ──
+  const csvFile    = document.getElementById('csv-file');
+  const csvBtn     = document.getElementById('csv-btn');
+  const csvResults = document.getElementById('csv-results');
+
+  csvFile.addEventListener('change', () => { csvBtn.disabled = !csvFile.files.length; });
+
+  csvBtn.addEventListener('click', () => {
+    const file = csvFile.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const lines = e.target.result.split(/\r?\n/).filter(l => l.trim());
+      const items = [];
+      lines.forEach((line, idx) => {
+        const cols = line.split(',');
+        const name = (cols[0] || '').trim();
+        const qty  = parseInt(cols[1]) || 0;
+        const price = parseFloat(cols[2]) || null;
+        // ヘッダー行をスキップ（数量が数値でない場合）
+        if (!name || isNaN(parseInt(cols[1]))) return;
+        items.push({ name, qty, unit_price: price });
+      });
+      const matched = applyItems(items);
+      csvResults.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>`
+        + `${items.length}行読み込み、${matched}件を自動入力</span>`;
+    };
+    reader.readAsText(file, 'UTF-8');
   });
 </script>
 {% endblock %}
