@@ -23,7 +23,7 @@ def _get_pool():
         if "sslmode" not in url:
             sep = "&" if "?" in url else "?"
             url = url + sep + "sslmode=require"
-        _pool = psycopg2.pool.ThreadedConnectionPool(1, 5, dsn=url)
+        _pool = psycopg2.pool.ThreadedConnectionPool(1, 5, dsn=url, connect_timeout=10)
     return _pool
 
 
@@ -31,14 +31,36 @@ def _get_pool():
 def get_conn():
     pool = _get_pool()
     conn = pool.getconn()
+    # プールが返した接続が切断済み・死んでいる場合は破棄して張り直す
+    # （Supabase側のアイドルタイムアウトやネットワーク切断で死んだ接続を
+    #   使い回すと、プロセス再起動まで全リクエストが失敗し続けるため）
+    if conn.closed:
+        pool.putconn(conn, close=True)
+        conn = pool.getconn()
+    else:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+        except psycopg2.Error:
+            pool.putconn(conn, close=True)
+            conn = pool.getconn()
+
+    broken = False
     try:
         yield conn
         conn.commit()
+    except psycopg2.Error:
+        broken = True
+        try:
+            conn.rollback()
+        except psycopg2.Error:
+            pass
+        raise
     except Exception:
         conn.rollback()
         raise
     finally:
-        pool.putconn(conn)
+        pool.putconn(conn, close=broken or bool(conn.closed))
 
 
 def _cur(conn):
