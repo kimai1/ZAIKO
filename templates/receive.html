@@ -80,8 +80,8 @@
     <div class="card-body py-2">
       <div class="row g-2 align-items-center">
         <div class="col-sm-auto">
-          <select name="supplier_id" class="form-select form-select-sm" style="min-width:160px">
-            <option value="">仕入れ先を選択（任意）</option>
+          <select name="supplier_id" class="form-select form-select-sm" style="min-width:160px" required>
+            <option value="">仕入れ先を選択 *</option>
             {% for s in suppliers %}
             <option value="{{ s.id }}">{{ s.name }}</option>
             {% endfor %}

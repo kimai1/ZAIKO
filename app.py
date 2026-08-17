@@ -565,7 +565,11 @@ def receive():
         operator   = request.form.get("operator", "").strip()
         reason     = request.form.get("reason", "一括入庫").strip()
         sid        = request.form.get("supplier_id", "")
-        supplier_id = int(sid) if sid else None
+        if not sid:
+            flash("仕入れ先を選択してください", "danger")
+            return render_template("receive.html", products=products,
+                                   categories=categories, suppliers=suppliers)
+        supplier_id = int(sid)
         # 仕入れ先名をreasonに自動付与
         if supplier_id and not reason:
             s = get_supplier(supplier_id)
