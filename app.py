@@ -169,7 +169,9 @@ def stock_in_view():
             if qty <= 0:
                 raise ValueError("数量は1以上を入力してください")
             sid = f.get("supplier_id")
-            supplier_id = int(sid) if sid else None
+            if not sid:
+                raise ValueError("仕入れ先を選択してください")
+            supplier_id = int(sid)
             unit_price = float(f.get("unit_price") or 0) or None
             # 仕入れ先名をreasonに自動付与
             reason = f.get("reason", "")
